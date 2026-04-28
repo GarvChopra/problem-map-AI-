@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Reputation — Problem Map{% endblock %}
+{% block extra_head %}
+<style>
+  .rep-wrap { max-width: 800px; margin: 0 auto; padding: 32px 24px; }
+  .rep-hero {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px; margin-bottom: 28px; display: flex; align-items: center; gap: 24px;
+  }
+  .rep-avatar-big {
+    width: 72px; height: 72px; border-radius: 50%; background: var(--accent);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Serif Display', serif; font-size: 28px; flex-shrink: 0;
+  }
+  .rep-hero-info { flex: 1; }
+  .rep-name { font-family: 'DM Serif Display', serif; font-size: 24px; }
+  .rep-level { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 500; margin-top: 6px; }
+  .level-newbie { background: #F4F6F7; color: #5D6D7E; }
+  .level-active { background: #EBF5FB; color: var(--blue); }
+  .level-contributor { background: #FEF9E7; color: var(--amber); }
+  .level-hero { background: #FDEDEC; color: var(--accent); }
+  .rep-points { font-family: 'DM Serif Display', serif; font-size: 40px; color: var(--accent); line-height: 1; }
+  .rep-points-lbl { font-size: 12px; color: var(--text2); }
+
+  .rep-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+  .rep-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .rep-stat-num { font-family: 'DM Serif Display', serif; font-size: 28px; }
+  .rep-stat-lbl { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  .progress-bar-wrap { background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; margin-top: 8px; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 1s ease; }
+
+  .leaderboard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .lb-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  .lb-row {
+    display: flex; align-items: center; gap: 14px; padding: 12px 20px;
+    border-bottom: 1px solid var(--border); transition: background 0.12s;
+  }
+  .lb-row:last-child { border-bottom: none; }
+  .lb-row:hover { background: var(--surface2); }
+  .lb-row.me { background: rgba(200, 75, 49, 0.07); }
+  .lb-rank { width: 24px; font-size: 13px; font-weight: 700; color: var(--text3); text-align: center; }
+  .lb-rank.gold { color: #B7860D; }
+  .lb-rank.silver { color: #5D6D7E; }
+  .lb-rank.bronze { color: #884E01; }
+  .lb-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--blue); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .lb-name { flex: 1; font-size: 13.5px; font-weight: 500; }
+  .lb-pts { font-weight: 600; color: var(--accent); }
+
+  .points-guide { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 24px; }
+  .pts-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .pts-row:last-child { border-bottom: none; }
+
+  /* ── Dark mode overrides ── */
+  body.dark .level-newbie     { background: rgba(93,109,126,0.2); color: #A89E94; }
+  body.dark .level-active     { background: rgba(27,79,114,0.25); color: #7eb8d4; }
+  body.dark .level-contributor{ background: rgba(183,119,13,0.2); color: #c9a84c; }
+  body.dark .level-hero       { background: rgba(200,75,49,0.2);  color: var(--accent); }
+  body.dark .lb-row.me        { background: rgba(200, 75, 49, 0.1); }
+  body.dark .lb-row.me:hover  { background: rgba(200, 75, 49, 0.15); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="rep-wrap">
+  <div class="section-header">
+    <div class="section-title">Reputation</div>
+    <div class="section-sub">Earn points by reporting and engaging with civic issues</div>
+  </div>
+
+  <!-- User Hero Card -->
+  <div class="rep-hero" id="rep-hero">
+    <div class="rep-avatar-big" id="rep-avatar">{{ current_user[:2].upper() if current_user else 'U' }}</div>
+    <div class="rep-hero-info">
+      <div class="rep-name">{{ current_user }}</div>
+      <div class="rep-level level-newbie" id="rep-level">Newbie</div>
+      <div style="margin-top:12px">
+        <div style="font-size:12px; color:var(--text2); margin-bottom:4px">Progress to next level</div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="rep-progress" style="width:5%"></div></div>
+      </div>
+    </div>
+    <div style="text-align:center; flex-shrink:0">
+      <div class="rep-points" id="rep-pts">0</div>
+      <div class="rep-points-lbl">points</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="rep-stats">
+    <div class="rep-stat">
+      <div class="rep-stat-num" id="s-reported" style="color:var(--blue)">—</div>
+      <div class="rep-stat-lbl">Issues Reported</div>
+    </div>
+    <div class="rep-stat">
+      <div class="rep-stat-num" id="s-resolved" style="color:var(--green)">—</div>
+      <div class="rep-stat-lbl">Issues Resolved</div>
+    </div>
+    <div class="rep-stat">
+      <div class="rep-stat-num" id="s-level" style="color:var(--accent)">—</div>
+      <div class="rep-stat-lbl">Current Level</div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="leaderboard" id="leaderboard">
+    <div class="lb-header">Community Leaderboard</div>
+    <div id="lb-rows">
+      <div style="text-align:center; padding:40px">
+        <div class="spinner" style="margin:0 auto 10px"></div>
+        <div class="text-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Points Guide -->
+  <div class="points-guide">
+    <div style="font-weight:600; margin-bottom:14px">How to Earn Points</div>
+    <div class="pts-row"><span>Report a civic issue</span><span style="color:var(--accent); font-weight:600">+10 pts</span></div>
+    <div class="pts-row"><span>Upvote an issue</span><span style="color:var(--accent); font-weight:600">+2 pts</span></div>
+    <div class="pts-row"><span>Post in community</span><span style="color:var(--accent); font-weight:600">+3 pts</span></div>
+    <div class="pts-row"><span>Issue gets resolved</span><span style="color:var(--accent); font-weight:600">+20 pts</span></div>
+    <div class="pts-row"><span>Verify an issue</span><span style="color:var(--accent); font-weight:600">+5 pts</span></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CURRENT_USER = "{{ current_user }}";
+const LEVELS = [
+  { name:'Newbie', min:0, max:50, cls:'level-newbie' },
+  { name:'Active Member', min:50, max:200, cls:'level-active' },
+  { name:'Contributor', min:200, max:500, cls:'level-contributor' },
+  { name:'Civic Hero', min:500, max:Infinity, cls:'level-hero' },
+];
+
+function getLevel(pts) {
+  return LEVELS.find(l => pts >= l.min && pts < l.max) || LEVELS[0];
+}
+
+async function loadStats() {
+  const stats = await fetch(`/user/stats?name=${encodeURIComponent(CURRENT_USER)}`).then(r=>r.json());
+  const pts = stats.points || 0;
+  const level = getLevel(pts);
+
+  document.getElementById('rep-pts').textContent = pts;
+  document.getElementById('s-reported').textContent = stats.total_reported || 0;
+  document.getElementById('s-resolved').textContent = stats.total_resolved || 0;
+  document.getElementById('s-level').textContent = level.name;
+
+  const lvlEl = document.getElementById('rep-level');
+  lvlEl.textContent = level.name;
+  lvlEl.className = `rep-level ${level.cls}`;
+
+  const progress = level.max === Infinity ? 100 : Math.min(100, ((pts - level.min) / (level.max - level.min)) * 100);
+  document.getElementById('rep-progress').style.width = progress + '%';
+}
+
+async function loadLeaderboard() {
+  // Get all issues to derive user activity
+  const issues = await fetch('/issues').then(r=>r.json());
+  const userPts = {};
+  // Aggregate approximate points from reports
+  issues.forEach(i => {
+    if (i.user && i.user !== 'system_seed') {
+      userPts[i.user] = (userPts[i.user] || 0) + 10;
+      if (i.status === 'resolved') userPts[i.user] += 20;
+    }
+  });
+
+  // Also get current user's real points
+  if (CURRENT_USER) {
+    const s = await fetch(`/user/points?name=${encodeURIComponent(CURRENT_USER)}`).then(r=>r.json());
+    userPts[CURRENT_USER] = s.points || userPts[CURRENT_USER] || 0;
+  }
+
+  const sorted = Object.entries(userPts).sort((a,b) => b[1]-a[1]).slice(0, 15);
+  const rankColors = ['gold','silver','bronze'];
+  const colors = ['#C84B31','#1B4F72','#2D6A4F','#B7770D','#7D3C98','#935116'];
+
+  document.getElementById('lb-rows').innerHTML = sorted.map(([user, pts], i) => {
+    const rank = i + 1;
+    const rankCls = rankColors[i] || '';
+    const isMe = user === CURRENT_USER;
+    const color = colors[i % colors.length];
+    return `
+    <div class="lb-row ${isMe ? 'me' : ''}">
+      <div class="lb-rank ${rankCls}">${rank <= 3 ? ['①','②','③'][i] : rank}</div>
+      <div class="lb-avatar" style="background:${color}">${user.slice(0,2).toUpperCase()}</div>
+      <div class="lb-name">${escHtml(user)}${isMe ? ' <span style="font-size:11px;color:var(--text3)">(you)</span>' : ''}</div>
+      <div style="font-size:12px; color:var(--text2)">${getLevel(pts).name}</div>
+      <div class="lb-pts">${pts} pts</div>
+    </div>`;
+  }).join('') || '<div style="padding:20px; text-align:center; color:var(--text2)">No users yet</div>';
+}
+
+function escHtml(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+loadStats();
+loadLeaderboard();
+</script>
+{% endblock %}

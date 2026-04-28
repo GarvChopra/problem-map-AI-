@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}My Reports — Problem Map{% endblock %}
+{% block extra_head %}
+<style>
+  .my-issues-wrap { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  .issues-list { display: flex; flex-direction: column; gap: 12px; }
+  .my-issue-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .my-issue-card-img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .my-issue-img-placeholder { width: 80px; height: 60px; background: var(--surface2); border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 20px; }
+  .my-issue-body { flex: 1; min-width: 0; }
+  .my-issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .my-issue-desc { font-size: 13.5px; line-height: 1.5; margin-bottom: 8px; }
+  .my-issue-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .timeline-step {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text2);
+  }
+  .timeline-dot {
+    width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0;
+  }
+  .timeline-dot.done { background: var(--green); border-color: var(--green); }
+  .timeline-dot.active { background: var(--accent); border-color: var(--accent); }
+  .status-timeline { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
+  .timeline-line { height: 1px; width: 20px; background: var(--border); }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+  .stats-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .stats-card .num { font-family: 'DM Serif Display', serif; font-size: 28px; }
+  .stats-card .lbl { font-size: 12px; color: var(--text2); margin-top: 2px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="my-issues-wrap">
+  <div class="flex items-center justify-between mb-16">
+    <div>
+      <div class="section-title">My Reports</div>
+      <div class="section-sub">Issues reported by {{ current_user }}</div>
+    </div>
+    <a href="/" class="btn btn-primary btn-sm">+ New Report</a>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="stats-card"><div class="num" id="s-total">—</div><div class="lbl">Reported</div></div>
+    <div class="stats-card"><div class="num" id="s-resolved" style="color:var(--green)">—</div><div class="lbl">Resolved</div></div>
+    <div class="stats-card"><div class="num" id="s-open" style="color:var(--blue)">—</div><div class="lbl">Open</div></div>
+    <div class="stats-card"><div class="num" id="s-points" style="color:var(--accent)">—</div><div class="lbl">Points</div></div>
+  </div>
+
+  <!-- Issues list -->
+  <div class="issues-list" id="issues-list">
+    <div style="text-align:center; padding:40px">
+      <div class="spinner" style="margin:0 auto 10px"></div>
+      <div class="text-muted">Loading your reports…</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CURRENT_USER = "{{ current_user }}";
+
+function getStatusSteps(status) {
+  const steps = ['open', 'verified', 'escalated', 'resolved'];
+  const idx = steps.indexOf(status || 'open');
+  return steps.map((s, i) => ({
+    label: s.charAt(0).toUpperCase() + s.slice(1),
+    state: i < idx ? 'done' : i === idx ? 'active' : 'pending'
+  }));
+}
+
+async function load() {
+  const [issueRes, statsRes] = await Promise.all([
+    fetch(`/my-issues-data?user=${encodeURIComponent(CURRENT_USER)}`),
+    fetch(`/user/stats?name=${encodeURIComponent(CURRENT_USER)}`)
+  ]);
+  const issues = await issueRes.json();
+  const stats = await statsRes.json();
+
+  document.getElementById('s-total').textContent = stats.total_reported || 0;
+  document.getElementById('s-resolved').textContent = stats.total_resolved || 0;
+  document.getElementById('s-open').textContent = (stats.total_reported || 0) - (stats.total_resolved || 0);
+  document.getElementById('s-points').textContent = stats.points || 0;
+
+  const list = document.getElementById('issues-list');
+  if (!issues.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">○</div><div class="empty-state-title">No reports yet</div><div>Start by reporting a civic issue in your area.</div><br><a href="/" class="btn btn-primary">Report an Issue</a></div>`;
+    return;
+  }
+
+  list.innerHTML = issues.map(issue => {
+    const steps = getStatusSteps(issue.status);
+    const statusColors = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
+    return `
+    <div class="my-issue-card">
+      ${issue.image
+        ? `<img class="my-issue-card-img" src="${issue.image}" loading="lazy"/>`
+        : `<div class="my-issue-img-placeholder">○</div>`}
+      <div class="my-issue-body">
+        <div class="my-issue-header">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
+            <span class="badge ${statusColors[issue.status||'open']||'badge-open'}">${issue.status||'open'}</span>
+            ${issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : ''}
+          </div>
+          <span class="text-sm text-muted">${timeAgo(issue.timestamp)}</span>
+        </div>
+        <div class="my-issue-desc">${escHtml(issue.description)}</div>
+        <div class="my-issue-meta">
+          <span class="text-sm text-muted">📍 ${escHtml(issue.area)}</span>
+          <span class="text-sm text-muted">▲ ${issue.upvotes||0} upvotes</span>
+          ${issue.assigned_to ? `<span class="text-sm text-muted">→ ${escHtml(issue.assigned_to)}</span>` : ''}
+        </div>
+        <!-- Status timeline -->
+        <div class="status-timeline">
+          ${steps.map((step, i) => `
+            ${i > 0 ? '<div class="timeline-line"></div>' : ''}
+            <div class="timeline-step">
+              <div class="timeline-dot ${step.state}"></div>
+              <span style="color:${step.state==='active'?'var(--accent)':step.state==='done'?'var(--green)':'var(--text3)'};font-weight:${step.state!=='pending'?'500':'400'}">${step.label}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  if(!s)return'';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+load();
+</script>
+{% endblock %}

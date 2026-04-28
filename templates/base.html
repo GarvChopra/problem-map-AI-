@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Problem Map Delhi{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display:ital@0;1&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/ai_assistant.css" />
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <a class="nav-brand" href="/">
+      <div class="nav-brand-icon">PM</div>
+      Problem Map
+    </a>
+    <div class="nav-links">
+      <a href="/" id="nav-home">Home</a>
+      <a href="/issues-page" id="nav-issues">Issues</a>
+      <a href="/my-issues" id="nav-my">My Reports</a>
+      <a href="/community-page" id="nav-community">Community</a>
+      <a href="/ngo-page" id="nav-ngo">NGOs</a>
+      <a href="/reputation" id="nav-rep">Reputation</a>
+    </div>
+    <div class="nav-right">
+      <!-- Theme Toggle Pill -->
+      <div class="theme-toggle" id="theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode" role="button" tabindex="0">
+        <span class="toggle-icon toggle-moon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </span>
+        <span class="toggle-knob"></span>
+        <span class="toggle-icon toggle-sun">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </span>
+      </div>
+      {% if current_user %}
+      <div class="nav-user">
+        <div class="nav-avatar">{{ current_user[:2].upper() }}</div>
+        <span class="hide-mobile" style="font-weight:500">{{ current_user }}</span>
+        <span id="nav-pts" class="text-muted hide-mobile" style="font-size:12px"></span>
+      </div>
+      <a href="/logout" class="btn btn-outline btn-sm">Logout</a>
+      {% else %}
+      <a href="/login" class="btn btn-primary btn-sm">Sign In</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <div class="page-wrap">
+    {% block content %}{% endblock %}
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- ═══════════════════ AREAPULSE CIVIC AI ASSISTANT ═══════════════════ -->
+  <button id="ai-fab" title="Ask AreaPulse AI" aria-label="Open AI assistant">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+    <span id="ai-fab-pulse"></span>
+  </button>
+
+  <div id="ai-panel" class="ai-panel hidden">
+    <div class="ai-panel-header">
+      <div class="ai-header-left">
+        <div class="ai-avatar">AI</div>
+        <div>
+          <div class="ai-title">AreaPulse Civic AI</div>
+          <div class="ai-status"><span class="ai-dot"></span> Online · Real-time</div>
+        </div>
+      </div>
+      <button class="ai-close" id="ai-close" title="Close">×</button>
+    </div>
+
+    <div class="ai-tabs">
+      <div class="ai-tab active" data-tab="chat">Chat</div>
+      <div class="ai-tab" data-tab="insights">Insights</div>
+      <div class="ai-tab" data-tab="copilot">Report Copilot</div>
+    </div>
+
+    <!-- Chat tab -->
+    <div class="ai-tab-panel active" id="ai-tab-chat">
+      <div class="ai-messages" id="ai-messages">
+        <div class="ai-msg ai-msg-bot">
+          <div class="ai-msg-bubble">
+            Hello! I'm <b>AreaPulse Civic AI</b>. Ask me about civic issues across Delhi — trends, hot zones, comparisons, or specific locations.
+          </div>
+        </div>
+        <div class="ai-suggested">
+          <button class="ai-chip" data-q="Where are the most pothole reports?">Pothole hotspots</button>
+          <button class="ai-chip" data-q="Compare complaints in last 7 days">Last 7-day breakdown</button>
+          <button class="ai-chip" data-q="Which areas need most attention?">Top priority areas</button>
+          <button class="ai-chip" data-q="Show me high severity issues on map">High-severity map</button>
+          <button class="ai-chip" data-q="Garbage trends in last 24 hours">Garbage trends</button>
+          <button class="ai-chip" data-q="Give me a summary of insights">Insight summary</button>
+        </div>
+      </div>
+      <div class="ai-input-row">
+        <input id="ai-input" placeholder="Ask AreaPulse anything…" autocomplete="off" />
+        <button id="ai-send" class="btn btn-primary btn-sm">Send</button>
+      </div>
+    </div>
+
+    <!-- Insights tab -->
+    <div class="ai-tab-panel" id="ai-tab-insights">
+      <div id="ai-insights-content" style="padding:16px;">
+        <div class="ai-loading">
+          <div class="spinner"></div>
+          <div>Analyzing civic data…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Copilot tab -->
+    <div class="ai-tab-panel" id="ai-tab-copilot">
+      <div style="padding:16px;">
+        <p style="font-size:13px; margin:0 0 10px; color:var(--text2)">
+          Paste a draft report below and AI will suggest the category, severity, and a polished version.
+        </p>
+        <textarea id="ai-copilot-input" rows="4" placeholder="e.g. There is a big pothole near my house causing accidents..." style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); font-family:inherit; font-size:13px; background:var(--surface); color:var(--text); resize:vertical;"></textarea>
+        <button id="ai-copilot-go" class="btn btn-primary btn-sm" style="margin-top:10px; width:100%;">Analyze with AI</button>
+        <div id="ai-copilot-result" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Dark mode — pill toggle
+    (function() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') {
+        document.body.classList.add('dark');
+        document.getElementById('theme-toggle').classList.add('is-dark');
+      }
+    })();
+    const themeToggle = document.getElementById('theme-toggle');
+    function doToggle() {
+      const isDark = document.body.classList.toggle('dark');
+      themeToggle.classList.toggle('is-dark', isDark);
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+    themeToggle.addEventListener('click', doToggle);
+    themeToggle.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doToggle(); }
+    });
+
+    // Active nav
+    const path = window.location.pathname;
+    const navMap = {
+      '/': 'nav-home', '/issues-page': 'nav-issues', '/my-issues': 'nav-my',
+      '/community-page': 'nav-community', '/ngo-page': 'nav-ngo', '/reputation': 'nav-rep'
+    };
+    const activeId = navMap[path];
+    if (activeId) document.getElementById(activeId)?.classList.add('active');
+
+    // Toast helper
+    function showToast(msg, duration = 3000) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), duration);
+    }
+
+    // Fetch user points
+    const currentUser = "{{ current_user or '' }}";
+    if (currentUser) {
+      fetch(`/user/points?name=${currentUser}`).then(d => d.json()).then(d => {
+        const el = document.getElementById('nav-pts');
+        if (el) el.textContent = d.points + " pts";
+      }).catch(() => { });
+    }
+
+    // Format time
+    function timeAgo(ts) {
+      const diff = Date.now() / 1000 - ts;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    // Tag icon map
+    const TAG_ICONS = {
+      pothole: '⬛', water: '◉', garbage: '▣', streetlight: '◎',
+      traffic: '▶', noise: '◈', sewage: '⬡', electricity: '◆', tree: '◑', other: '○'
+    };
+    const TAG_LABELS = {
+      pothole: 'Pothole', water: 'Water', garbage: 'Garbage', streetlight: 'Streetlight',
+      traffic: 'Traffic', noise: 'Noise', sewage: 'Sewage', electricity: 'Electricity',
+      tree: 'Tree', other: 'Other'
+    };
+  </script>
+  <script src="/static/ai_assistant.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+
+</html>

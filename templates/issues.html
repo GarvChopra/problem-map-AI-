@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}All Issues — Problem Map{% endblock %}
+{% block extra_head %}
+<style>
+  .issues-layout {
+    display: flex; height: calc(100vh - var(--nav-h)); overflow: hidden;
+  }
+  .issues-sidebar {
+    width: 280px; flex-shrink: 0; background: var(--surface);
+    border-right: 1px solid var(--border); padding: 20px;
+    overflow-y: auto;
+  }
+  .issues-main { flex: 1; overflow-y: auto; padding: 24px; }
+  .issues-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+  .filter-group { margin-bottom: 20px; }
+  .filter-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin-bottom: 8px; }
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface); cursor: pointer;
+    transition: all 0.15s; color: var(--text2);
+  }
+  .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip:hover:not(.active) { background: var(--surface2); }
+
+  .issue-full-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; transition: all 0.15s; cursor: pointer;
+  }
+  .issue-full-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+  .issue-full-card-img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin-bottom: 12px; }
+  .issue-desc { font-size: 13.5px; line-height: 1.5; margin: 10px 0; }
+  .issue-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+
+  .status-bar {
+    display: flex; gap: 6px; margin-bottom: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; flex-wrap: wrap;
+  }
+  .status-count { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .search-wrap { position: relative; margin-bottom: 20px; }
+  .search-wrap input { padding-left: 34px; }
+  .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text3); pointer-events: none; }
+
+  .card-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .card-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: transparent;
+    cursor: pointer; font-family: inherit; color: var(--text2);
+    transition: all 0.15s;
+  }
+  .card-btn:hover { background: var(--surface2); color: var(--text); }
+  .card-btn-verify:hover   { border-color: var(--green); color: var(--green); }
+  .card-btn-escalate:hover { border-color: var(--amber); color: var(--amber); }
+  .card-btn-active-upvote   { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(200,75,49,0.08) !important; }
+  .card-btn-active-verify   { border-color: var(--green)  !important; color: var(--green)  !important; background: rgba(45,106,79,0.08)  !important; }
+  .card-btn-active-escalate { border-color: var(--amber)  !important; color: var(--amber)  !important; background: rgba(183,119,13,0.08) !important; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="issues-layout">
+
+  <!-- Filter Sidebar -->
+  <aside class="issues-sidebar">
+    <div style="font-family:'DM Serif Display',serif; font-size:17px; margin-bottom:20px">Filters</div>
+
+    <div class="filter-group">
+      <div class="filter-label">Category</div>
+      <div class="filter-chips" id="tag-chips">
+        <div class="chip active" data-val="" onclick="setTag(this, '')">All</div>
+        <div class="chip" data-val="pothole" onclick="setTag(this,'pothole')">Pothole</div>
+        <div class="chip" data-val="water" onclick="setTag(this,'water')">Water</div>
+        <div class="chip" data-val="garbage" onclick="setTag(this,'garbage')">Garbage</div>
+        <div class="chip" data-val="streetlight" onclick="setTag(this,'streetlight')">Streetlight</div>
+        <div class="chip" data-val="traffic" onclick="setTag(this,'traffic')">Traffic</div>
+        <div class="chip" data-val="noise" onclick="setTag(this,'noise')">Noise</div>
+        <div class="chip" data-val="sewage" onclick="setTag(this,'sewage')">Sewage</div>
+        <div class="chip" data-val="electricity" onclick="setTag(this,'electricity')">Electricity</div>
+        <div class="chip" data-val="tree" onclick="setTag(this,'tree')">Tree</div>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Status</div>
+      <div class="filter-chips" id="status-chips">
+        <div class="chip active" data-val="" onclick="setStatus(this,'')">All</div>
+        <div class="chip" data-val="open" onclick="setStatus(this,'open')">Open</div>
+        <div class="chip" data-val="resolved" onclick="setStatus(this,'resolved')">Resolved</div>
+        <div class="chip" data-val="escalated" onclick="setStatus(this,'escalated')">Escalated</div>
+        <div class="chip" data-val="verified" onclick="setStatus(this,'verified')">Verified</div>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Severity</div>
+      <div class="filter-chips" id="sev-chips">
+        <div class="chip active" data-val="" onclick="setSev(this,'')">All</div>
+        <div class="chip" data-val="high" onclick="setSev(this,'high')">High</div>
+        <div class="chip" data-val="medium" onclick="setSev(this,'medium')">Medium</div>
+        <div class="chip" data-val="low" onclick="setSev(this,'low')">Low</div>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <div class="filter-label">Sort by</div>
+      <select id="sort-by" onchange="loadIssues()" style="font-size:13px">
+        <option value="newest">Newest First</option>
+        <option value="upvotes">Most Upvoted</option>
+        <option value="priority">Priority</option>
+      </select>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="issues-main">
+    <div class="flex items-center justify-between mb-16">
+      <div>
+        <div class="section-title">All Issues</div>
+        <div class="section-sub" id="issues-count">Loading…</div>
+      </div>
+      <a href="/" class="btn btn-primary btn-sm">+ Report Issue</a>
+    </div>
+
+    <!-- Status summary bar -->
+    <div class="status-bar" id="status-bar"></div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input id="search-input" type="text" placeholder="Search by description, area, category…" oninput="debounceSearch()"/>
+    </div>
+
+    <!-- Grid -->
+    <div class="issues-grid" id="issues-grid">
+      <div style="grid-column:1/-1; text-align:center; padding:40px">
+        <div class="spinner" style="margin:0 auto 10px"></div>
+        <div class="text-muted">Loading issues…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" id="detail-content"></div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const CURRENT_USER = "{{ current_user or '' }}";
+let activeTag = '', activeStatus = '', activeSev = '', searchQ = '';
+let allIssues = [];
+
+function setTag(el, val) {
+  activeTag = val;
+  document.querySelectorAll('#tag-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active'); loadIssues();
+}
+function setStatus(el, val) {
+  activeStatus = val;
+  document.querySelectorAll('#status-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active'); loadIssues();
+}
+function setSev(el, val) {
+  activeSev = val;
+  document.querySelectorAll('#sev-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active'); loadIssues();
+}
+
+let searchTimer;
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { searchQ = document.getElementById('search-input').value.trim(); loadIssues(); }, 300);
+}
+
+function loadIssues() {
+  let url = '/issues?';
+  if (activeTag) url += `tag=${encodeURIComponent(activeTag)}&`;
+  if (activeStatus) url += `status=${encodeURIComponent(activeStatus)}&`;
+  if (searchQ) url += `q=${encodeURIComponent(searchQ)}&`;
+
+  fetch(url).then(r=>r.json()).then(issues => {
+    allIssues = issues;
+
+    // Client-side sev filter
+    let filtered = activeSev ? issues.filter(i=>(i.severity||'medium')===activeSev) : issues;
+
+    // Sort
+    const sort = document.getElementById('sort-by').value;
+    if (sort === 'upvotes') filtered.sort((a,b)=>(b.upvotes||0)-(a.upvotes||0));
+    else if (sort === 'priority') filtered.sort((a,b)=>(b.priority||0)-(a.priority||0));
+    else filtered.sort((a,b)=>b.timestamp-a.timestamp);
+
+    renderStatusBar(issues);
+    renderGrid(filtered);
+    document.getElementById('issues-count').textContent = `${filtered.length} issue${filtered.length!==1?'s':''} found`;
+  }).catch(() => {
+    document.getElementById('issues-grid').innerHTML = '<div style="grid-column:1/-1; text-align:center; color:var(--text2); padding:40px">Error loading issues</div>';
+  });
+}
+
+function renderStatusBar(issues) {
+  const counts = { open:0, resolved:0, escalated:0, verified:0 };
+  issues.forEach(i => { const s = i.status||'open'; if(counts[s]!==undefined) counts[s]++; });
+  const colors = { open:'var(--blue)', resolved:'var(--green)', escalated:'var(--amber)', verified:'var(--text2)' };
+  document.getElementById('status-bar').innerHTML = Object.entries(counts).map(([s,c]) =>
+    `<div class="status-count"><div class="status-dot" style="background:${colors[s]}"></div><strong>${c}</strong> ${s}</div>`
+  ).join('<span style="color:var(--border)">|</span>');
+}
+
+function renderGrid(issues) {
+  const grid = document.getElementById('issues-grid');
+  if (!issues.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1"><div class="empty-state"><div class="empty-state-icon">○</div><div class="empty-state-title">No issues found</div><div>Try different filters</div></div></div>';
+    return;
+  }
+  grid.innerHTML = issues.map(issue => {
+    const statusBadge = `<span class="badge badge-${issue.status||'open'}">${(issue.status||'open')}</span>`;
+    const sevBadge = issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : '';
+    return `
+    <div class="issue-full-card" onclick="openDetail(${issue.id})">
+      ${issue.image ? `<img src="${issue.image}" class="issue-full-card-img" loading="lazy"/>` : ''}
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px">
+        <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
+        ${statusBadge} ${sevBadge}
+      </div>
+      <div class="issue-desc">${escHtml(truncate(issue.description, 100))}</div>
+      <div style="font-size:12px; color:var(--text2); margin-bottom:2px">📍 ${escHtml(issue.area)}</div>
+      <div style="font-size:11.5px; color:var(--text3);">${timeAgo(issue.timestamp)} · by ${escHtml(issue.user||'anon')}</div>
+      <div class="card-actions" onclick="event.stopPropagation()">
+        <button class="card-btn ${(issue.user_actions||[]).includes('upvote') ? 'card-btn-active-upvote' : ''}" onclick="quickUpvote(${issue.id}, this)">▲ <span>${issue.upvotes||0}</span></button>
+        <button class="card-btn card-btn-verify ${(issue.user_actions||[]).includes('verify') ? 'card-btn-active-verify' : ''}" onclick="verifyIssue(${issue.id}, this)">✓ ${(issue.user_actions||[]).includes('verify') ? 'Verified' : 'Verify'}</button>
+        <button class="card-btn card-btn-escalate ${(issue.user_actions||[]).includes('escalate') ? 'card-btn-active-escalate' : ''}" onclick="escalateIssue(${issue.id}, this)">↑ ${(issue.user_actions||[]).includes('escalate') ? 'Escalated' : 'Escalate'}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function quickUpvote(id, btn) {
+  const r = await fetch(`/upvote/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user:CURRENT_USER||'anonymous'})});
+  const d = await r.json();
+  if (d.status==='ok') {
+    const span = btn.querySelector('span');
+    const count = parseInt(span.textContent||0);
+    if (d.action === 'added') {
+      span.textContent = count + 1;
+      btn.classList.add('card-btn-active-upvote');
+      showToast('+2 pts');
+    } else {
+      span.textContent = Math.max(count - 1, 0);
+      btn.classList.remove('card-btn-active-upvote');
+      showToast('-2 pts · upvote removed');
+    }
+  }
+}
+
+async function verifyIssue(id, btn) {
+  const pwd = prompt('Enter admin password to verify:');
+  if (!pwd) return;
+  const r = await fetch(`/verify/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({admin_password: pwd, user: CURRENT_USER||'anonymous'})});
+  const d = await r.json();
+  if (d.status === 'ok') {
+    if (d.action === 'added') {
+      btn.textContent = '✓ Verified';
+      btn.classList.add('card-btn-active-verify');
+      showToast('Verified! +5 pts');
+    } else {
+      btn.textContent = '✓ Verify';
+      btn.classList.remove('card-btn-active-verify');
+      showToast('Verification removed');
+    }
+    loadIssues();
+  } else { showToast(d.error || 'Verification failed'); }
+}
+
+async function escalateIssue(id, btn) {
+  const r = await fetch(`/ngo/escalate/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user: CURRENT_USER||'anonymous'})});
+  const d = await r.json();
+  if (d.status === 'ok') {
+    if (d.action === 'added') {
+      btn.textContent = '↑ Escalated';
+      btn.classList.add('card-btn-active-escalate');
+      showToast('Issue escalated!');
+    } else {
+      btn.textContent = '↑ Escalate';
+      btn.classList.remove('card-btn-active-escalate');
+      showToast('Escalation removed');
+    }
+    loadIssues();
+  } else { showToast(d.error || 'Escalation failed'); }
+}
+
+function openDetail(id) {
+  const issue = allIssues.find(i=>i.id===id);
+  if (!issue) return;
+  const statusColors = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
+  document.getElementById('detail-content').innerHTML = `
+    <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    ${issue.image ? `<img src="${issue.image}" style="width:100%;border-radius:8px;margin-bottom:16px;max-height:220px;object-fit:cover"/>` : ''}
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+      <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
+      <span class="badge ${statusColors[issue.status||'open']||'badge-open'}">${issue.status||'open'}</span>
+      ${issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : ''}
+      ${issue.verified ? '<span class="badge badge-verified">Verified</span>' : ''}
+    </div>
+    <div style="font-size:15px; font-weight:500; line-height:1.5; margin-bottom:14px">${escHtml(issue.description)}</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0">
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Area</div><div style="font-weight:500;margin-top:2px">${escHtml(issue.area)}</div></div>
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Reported by</div><div style="font-weight:500;margin-top:2px">${escHtml(issue.user||'anonymous')}</div></div>
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Reported</div><div style="font-weight:500;margin-top:2px">${timeAgo(issue.timestamp)}</div></div>
+      <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Upvotes</div><div style="font-weight:500;margin-top:2px">${issue.upvotes||0}</div></div>
+      ${issue.landmark ? `<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Landmark</div><div style="font-weight:500;margin-top:2px">${escHtml(issue.landmark)}</div></div>` : ''}
+      ${issue.assigned_to ? `<div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3)">Assigned to</div><div style="font-weight:500;margin-top:2px">${escHtml(issue.assigned_to)}</div></div>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" onclick="upvoteDetail(${issue.id})">▲ Upvote</button>
+      <button class="btn btn-outline" onclick="closeModal('detail-modal')">Close</button>
+    </div>
+  `;
+  document.getElementById('detail-modal').classList.add('open');
+}
+
+async function upvoteDetail(id) {
+  const r = await fetch(`/upvote/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user:CURRENT_USER||'anonymous'})});
+  const d = await r.json();
+  if (d.status==='ok') { showToast('+2 pts'); loadIssues(); closeModal('detail-modal'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function truncate(s,n) { return s&&s.length>n?s.slice(0,n)+'…':s||''; }
+function escHtml(s) {
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); });
+});
+
+loadIssues();
+</script>
+{% endblock %}
