@@ -190,6 +190,10 @@ function loadIssues() {
     // Client-side sev filter
     let filtered = activeSev ? issues.filter(i=>(i.severity||'medium')===activeSev) : issues;
 
+    // Client-side status filter for escalated/verified (now stored as booleans)
+    if (activeStatus === 'escalated') filtered = filtered.filter(i => i.is_escalated);
+    if (activeStatus === 'verified')  filtered = filtered.filter(i => i.is_verified);
+
     // Sort
     const sort = document.getElementById('sort-by').value;
     if (sort === 'upvotes') filtered.sort((a,b)=>(b.upvotes||0)-(a.upvotes||0));
@@ -205,9 +209,12 @@ function loadIssues() {
 }
 
 function renderStatusBar(issues) {
-  const counts = { open:0, resolved:0, escalated:0, verified:0 };
-  issues.forEach(i => { const s = i.status||'open'; if(counts[s]!==undefined) counts[s]++; });
+  const open     = issues.filter(i => (i.status||'open') === 'open').length;
+  const resolved = issues.filter(i => i.status === 'resolved').length;
+  const escalated = issues.filter(i => i.is_escalated).length;
+  const verified  = issues.filter(i => i.is_verified).length;
   const colors = { open:'var(--blue)', resolved:'var(--green)', escalated:'var(--amber)', verified:'var(--text2)' };
+  const counts = { open, resolved, escalated, verified };
   document.getElementById('status-bar').innerHTML = Object.entries(counts).map(([s,c]) =>
     `<div class="status-count"><div class="status-dot" style="background:${colors[s]}"></div><strong>${c}</strong> ${s}</div>`
   ).join('<span style="color:var(--border)">|</span>');
@@ -220,14 +227,20 @@ function renderGrid(issues) {
     return;
   }
   grid.innerHTML = issues.map(issue => {
-    const statusBadge = `<span class="badge badge-${issue.status||'open'}">${(issue.status||'open')}</span>`;
+    // P-004: status badge only shows open/resolved
+    const baseStatus = (issue.status === 'resolved') ? 'resolved' : 'open';
+    const statusBadge    = `<span class="badge badge-${baseStatus}">${baseStatus}</span>`;
+    // P-004: independent badges for verified and escalated
+    const verifiedBadge  = issue.is_verified  ? `<span class="badge badge-verified">✓ Verified</span>`   : '';
+    const escalatedBadge = issue.is_escalated ? `<span class="badge badge-escalated">↑ Escalated</span>` : '';
     const sevBadge = issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : '';
+
     return `
     <div class="issue-full-card" onclick="openDetail(${issue.id})">
       ${issue.image ? `<img src="${issue.image}" class="issue-full-card-img" loading="lazy"/>` : ''}
       <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px">
         <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
-        ${statusBadge} ${sevBadge}
+        ${statusBadge} ${verifiedBadge} ${escalatedBadge} ${sevBadge}
       </div>
       <div class="issue-desc">${escHtml(truncate(issue.description, 100))}</div>
       <div style="font-size:12px; color:var(--text2); margin-bottom:2px">📍 ${escHtml(issue.area)}</div>
@@ -299,15 +312,16 @@ async function escalateIssue(id, btn) {
 function openDetail(id) {
   const issue = allIssues.find(i=>i.id===id);
   if (!issue) return;
-  const statusColors = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
+  const baseStatus = (issue.status === 'resolved') ? 'resolved' : 'open';
   document.getElementById('detail-content').innerHTML = `
     <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
     ${issue.image ? `<img src="${issue.image}" style="width:100%;border-radius:8px;margin-bottom:16px;max-height:220px;object-fit:cover"/>` : ''}
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
       <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
-      <span class="badge ${statusColors[issue.status||'open']||'badge-open'}">${issue.status||'open'}</span>
+      <span class="badge badge-${baseStatus}">${baseStatus}</span>
+      ${issue.is_verified  ? '<span class="badge badge-verified">✓ Verified</span>'   : ''}
+      ${issue.is_escalated ? '<span class="badge badge-escalated">↑ Escalated</span>' : ''}
       ${issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : ''}
-      ${issue.verified ? '<span class="badge badge-verified">Verified</span>' : ''}
     </div>
     <div style="font-size:15px; font-weight:500; line-height:1.5; margin-bottom:14px">${escHtml(issue.description)}</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0">
@@ -345,7 +359,6 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 
 // ───── AI: Draft email to authority ─────
 async function emailToAuthority(id) {
-  // Show loading modal
   let modal = document.getElementById('dispatch-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -392,7 +405,6 @@ async function emailToAuthority(id) {
 
     body.innerHTML = `
       <div style="margin-bottom:16px">${llmBadge}</div>
-
       <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:14px">
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:4px">Recipient</div>
         <div style="font-weight:600; font-size:14px; margin-bottom:4px">${escHtml(d.recipient_name)}</div>
@@ -400,17 +412,14 @@ async function emailToAuthority(id) {
         ${d.recipient_phone ? `<div style="font-size:13px; color:var(--text2); margin-top:2px">📞 <a href="tel:${d.recipient_phone}" style="color:#1B4F72">${escHtml(d.recipient_phone)}</a></div>` : ''}
         ${mapsLink ? `<div style="margin-top:6px">${mapsLink}</div>` : ''}
       </div>
-
       <div style="margin-bottom:14px">
         <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Subject</label>
         <input id="dispatch-subject" type="text" value="${escHtml(d.subject)}" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px"/>
       </div>
-
       <div style="margin-bottom:16px">
         <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Email body</label>
         <textarea id="dispatch-body-text" rows="14" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; line-height:1.55; resize:vertical">${escHtml(d.body)}</textarea>
       </div>
-
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn btn-primary" style="flex:1; min-width:140px; justify-content:center" onclick="sendDispatchEmail('${escapeJsAttr(d.recipient_email)}')">
           📧 Open in Email App
@@ -419,9 +428,8 @@ async function emailToAuthority(id) {
           📋 Copy
         </button>
       </div>
-
       <div style="margin-top:14px; padding:10px 12px; background:rgba(27,79,114,0.06); border-radius:8px; font-size:11.5px; color:var(--text2); line-height:1.5">
-        💡 <b>How this works:</b> Click "Open in Email App" to launch your email client (Gmail, Outlook, etc.) pre-filled with this complaint. Or copy the text and paste into any tool. The recipient and content were chosen by AI based on the issue type and location.
+        💡 <b>How this works:</b> Click "Open in Email App" to launch your email client pre-filled with this complaint. Or copy the text and paste into any tool.
       </div>
     `;
   } catch (e) {
