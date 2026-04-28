@@ -236,6 +236,7 @@ function renderGrid(issues) {
         <button class="card-btn ${(issue.user_actions||[]).includes('upvote') ? 'card-btn-active-upvote' : ''}" onclick="quickUpvote(${issue.id}, this)">▲ <span>${issue.upvotes||0}</span></button>
         <button class="card-btn card-btn-verify ${(issue.user_actions||[]).includes('verify') ? 'card-btn-active-verify' : ''}" onclick="verifyIssue(${issue.id}, this)">✓ ${(issue.user_actions||[]).includes('verify') ? 'Verified' : 'Verify'}</button>
         <button class="card-btn card-btn-escalate ${(issue.user_actions||[]).includes('escalate') ? 'card-btn-active-escalate' : ''}" onclick="escalateIssue(${issue.id}, this)">↑ ${(issue.user_actions||[]).includes('escalate') ? 'Escalated' : 'Escalate'}</button>
+        <button class="card-btn" style="border-color:#1B4F72; color:#1B4F72" onclick="emailToAuthority(${issue.id})">📧 Email Authority</button>
       </div>
     </div>`;
   }).join('');
@@ -341,6 +342,113 @@ function escHtml(s) {
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); });
 });
+
+// ───── AI: Draft email to authority ─────
+async function emailToAuthority(id) {
+  // Show loading modal
+  let modal = document.getElementById('dispatch-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dispatch-modal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:680px; width:95%; max-height:90vh; overflow-y:auto">
+        <div class="modal-header">
+          <h3 style="font-family:'DM Serif Display',serif">📧 Authority Dispatch</h3>
+          <button class="modal-close" onclick="document.getElementById('dispatch-modal').classList.remove('open')">×</button>
+        </div>
+        <div id="dispatch-body" style="padding:20px"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+  }
+  const body = document.getElementById('dispatch-body');
+  body.innerHTML = `<div style="text-align:center; padding:30px"><div class="spinner" style="margin:0 auto 12px"></div><div class="text-muted">AI is drafting a formal complaint email...</div></div>`;
+  modal.classList.add('open');
+
+  try {
+    const r = await fetch(`/ai/draft-dispatch/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ citizen: CURRENT_USER || 'anonymous' }),
+    });
+    const d = await r.json();
+    if (d.error) {
+      body.innerHTML = `<div style="color:var(--accent); padding:20px; text-align:center">${escHtml(d.error)}</div>`;
+      return;
+    }
+
+    const llmBadge = d.llm_drafted
+      ? '<span style="background:rgba(45,106,79,0.12); color:#2D6A4F; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">✨ AI-DRAFTED</span>'
+      : '<span style="background:rgba(183,119,13,0.12); color:#B7770D; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">📋 TEMPLATE</span>';
+
+    const mapsLink = d.maps_link
+      ? `<a href="${d.maps_link}" target="_blank" style="color:#1B4F72; font-size:12px">📍 View on map</a>`
+      : '';
+
+    const recipientLine = d.recipient_email
+      ? `<a href="mailto:${d.recipient_email}" style="color:#1B4F72">${d.recipient_email}</a>`
+      : '<span class="text-muted">No email on file — call or visit website</span>';
+
+    body.innerHTML = `
+      <div style="margin-bottom:16px">${llmBadge}</div>
+
+      <div style="background:var(--surface2); border-radius:10px; padding:14px; margin-bottom:14px">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:4px">Recipient</div>
+        <div style="font-weight:600; font-size:14px; margin-bottom:4px">${escHtml(d.recipient_name)}</div>
+        <div style="font-size:13px; color:var(--text2)">${recipientLine}</div>
+        ${d.recipient_phone ? `<div style="font-size:13px; color:var(--text2); margin-top:2px">📞 <a href="tel:${d.recipient_phone}" style="color:#1B4F72">${escHtml(d.recipient_phone)}</a></div>` : ''}
+        ${mapsLink ? `<div style="margin-top:6px">${mapsLink}</div>` : ''}
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Subject</label>
+        <input id="dispatch-subject" type="text" value="${escHtml(d.subject)}" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px"/>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Email body</label>
+        <textarea id="dispatch-body-text" rows="14" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; line-height:1.55; resize:vertical">${escHtml(d.body)}</textarea>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn btn-primary" style="flex:1; min-width:140px; justify-content:center" onclick="sendDispatchEmail('${escapeJsAttr(d.recipient_email)}')">
+          📧 Open in Email App
+        </button>
+        <button class="btn btn-outline" style="min-width:120px; justify-content:center" onclick="copyDispatch()">
+          📋 Copy
+        </button>
+      </div>
+
+      <div style="margin-top:14px; padding:10px 12px; background:rgba(27,79,114,0.06); border-radius:8px; font-size:11.5px; color:var(--text2); line-height:1.5">
+        💡 <b>How this works:</b> Click "Open in Email App" to launch your email client (Gmail, Outlook, etc.) pre-filled with this complaint. Or copy the text and paste into any tool. The recipient and content were chosen by AI based on the issue type and location.
+      </div>
+    `;
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--accent); padding:20px; text-align:center">Network error: ${e.message}</div>`;
+  }
+}
+
+function escapeJsAttr(s) { return String(s||'').replace(/'/g, "&#39;"); }
+
+function sendDispatchEmail(recipient) {
+  const subject = document.getElementById('dispatch-subject').value;
+  const body    = document.getElementById('dispatch-body-text').value;
+  const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = url;
+  setTimeout(() => showToast('Email app opened. Review and hit send!'), 300);
+}
+
+function copyDispatch() {
+  const subject = document.getElementById('dispatch-subject').value;
+  const body    = document.getElementById('dispatch-body-text').value;
+  const text = `Subject: ${subject}\n\n${body}`;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Email copied to clipboard ✓');
+  }).catch(() => {
+    showToast('Could not copy — please select and copy manually');
+  });
+}
 
 loadIssues();
 </script>
