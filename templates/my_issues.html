@@ -2,34 +2,107 @@
 {% block title %}My Reports — Problem Map{% endblock %}
 {% block extra_head %}
 <style>
-  .my-issues-wrap { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  .my-issues-wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
   .issues-list { display: flex; flex-direction: column; gap: 12px; }
   .my-issue-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     padding: 16px; display: flex; gap: 14px; align-items: flex-start;
+    cursor: pointer; transition: border-color 0.15s, transform 0.12s;
   }
+  .my-issue-card:hover { border-color: var(--accent); transform: translateY(-1px); }
   .my-issue-card-img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
-  .my-issue-img-placeholder { width: 80px; height: 60px; background: var(--surface2); border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 20px; }
+  .my-issue-img-placeholder {
+    width: 80px; height: 60px; background: var(--surface2); border-radius: 6px;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--text3); font-size: 20px;
+  }
   .my-issue-body { flex: 1; min-width: 0; }
   .my-issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
   .my-issue-desc { font-size: 13.5px; line-height: 1.5; margin-bottom: 8px; }
   .my-issue-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .timeline-step {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12px; color: var(--text2);
-  }
-  .timeline-dot {
-    width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0;
-  }
+  .timeline-step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+  .timeline-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
   .timeline-dot.done { background: var(--green); border-color: var(--green); }
   .timeline-dot.active { background: var(--accent); border-color: var(--accent); }
   .status-timeline { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
   .timeline-line { height: 1px; width: 20px; background: var(--border); }
+  .open-detail-hint {
+    font-size: 11.5px; color: var(--text3); margin-top: 6px;
+    display: flex; align-items: center; gap: 4px;
+  }
 
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
   .stats-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
   .stats-card .num { font-family: 'DM Serif Display', serif; font-size: 28px; }
   .stats-card .lbl { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* ─── Detail modal ─── */
+  .detail-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9000;
+    display: none; align-items: flex-start; justify-content: center; padding: 40px 16px;
+    overflow-y: auto;
+  }
+  .detail-overlay.open { display: flex; }
+  .detail-card {
+    background: var(--surface); border-radius: 14px; max-width: 760px; width: 100%;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  .detail-hero {
+    position: relative; min-height: 160px; max-height: 280px; overflow: hidden;
+    background: var(--surface2);
+  }
+  .detail-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .detail-hero-overlay {
+    position: absolute; inset: 0; background: linear-gradient(180deg, transparent, rgba(0,0,0,0.55));
+    display: flex; align-items: flex-end; padding: 18px 22px;
+  }
+  .detail-hero-title { color: white; font-family: 'DM Serif Display', serif; font-size: 22px; }
+  .detail-close {
+    position: absolute; top: 14px; right: 14px; z-index: 2;
+    width: 36px; height: 36px; border-radius: 50%; border: none; cursor: pointer;
+    background: rgba(0,0,0,0.5); color: white; font-size: 22px; line-height: 1;
+  }
+  .detail-close:hover { background: rgba(0,0,0,0.75); }
+
+  .detail-section { padding: 18px 22px; border-bottom: 1px solid var(--border); }
+  .detail-section:last-child { border-bottom: none; }
+  .detail-section-title {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text3); margin-bottom: 10px;
+  }
+  .detail-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 18px;
+  }
+  .detail-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 4px 0; }
+  .detail-row .k { color: var(--text2); }
+  .detail-row .v { font-weight: 500; text-align: right; word-break: break-word; }
+
+  .agency-card, .ngo-row {
+    background: var(--surface2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .agency-card { border-left: 3px solid var(--blue); }
+  .ngo-row { border-left: 3px solid var(--green); }
+  .agency-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .agency-focus { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+  .agency-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .timeline-big {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; gap: 4px;
+  }
+  .tl-step-big {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    text-align: center; font-size: 11.5px;
+  }
+  .tl-circle { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text3); }
+  .tl-circle.done { background: var(--green); border-color: var(--green); color: white; }
+  .tl-circle.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .tl-line-big { flex: 1; height: 2px; background: var(--border); margin: 0 -2px; align-self: flex-start; margin-top: 11px; }
+  .tl-line-big.done { background: var(--green); }
+
+  @media (max-width: 600px) {
+    .detail-grid { grid-template-columns: 1fr; }
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -55,6 +128,16 @@
     <div style="text-align:center; padding:40px">
       <div class="spinner" style="margin:0 auto 10px"></div>
       <div class="text-muted">Loading your reports…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-card" id="detail-card">
+    <div style="text-align:center; padding:60px">
+      <div class="spinner" style="margin:0 auto 12px"></div>
+      <div class="text-muted">Loading details…</div>
     </div>
   </div>
 </div>
@@ -95,7 +178,7 @@ async function load() {
     const steps = getStatusSteps(issue.status);
     const statusColors = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
     return `
-    <div class="my-issue-card">
+    <div class="my-issue-card" onclick="openDetail(${issue.id})">
       ${issue.image
         ? `<img class="my-issue-card-img" src="${issue.image}" loading="lazy"/>`
         : `<div class="my-issue-img-placeholder">○</div>`}
@@ -114,7 +197,6 @@ async function load() {
           <span class="text-sm text-muted">▲ ${issue.upvotes||0} upvotes</span>
           ${issue.assigned_to ? `<span class="text-sm text-muted">→ ${escHtml(issue.assigned_to)}</span>` : ''}
         </div>
-        <!-- Status timeline -->
         <div class="status-timeline">
           ${steps.map((step, i) => `
             ${i > 0 ? '<div class="timeline-line"></div>' : ''}
@@ -124,14 +206,232 @@ async function load() {
             </div>
           `).join('')}
         </div>
+        <div class="open-detail-hint">▸ Click for full details, NGO & authority info</div>
       </div>
     </div>`;
   }).join('');
 }
 
+// ─────── DETAIL MODAL ───────
+async function openDetail(id) {
+  const overlay = document.getElementById('detail-overlay');
+  const card = document.getElementById('detail-card');
+  card.innerHTML = `<div style="text-align:center; padding:60px"><div class="spinner" style="margin:0 auto 12px"></div><div class="text-muted">Loading details…</div></div>`;
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const r = await fetch(`/issue/${id}/detail`);
+    const d = await r.json();
+    if (d.error) {
+      card.innerHTML = `<div style="padding:40px;text-align:center;color:var(--accent)">${escHtml(d.error)}</div>`;
+      return;
+    }
+    renderDetail(d);
+  } catch (e) {
+    card.innerHTML = `<div style="padding:40px;text-align:center;color:var(--accent)">Network error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.getElementById('detail-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeDetail();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+function renderDetail(d) {
+  const issue = d.issue;
+  const tagLabel = TAG_LABELS[issue.tag] || 'Other';
+  const sevColor = issue.severity === 'high' ? '#C84B31' : issue.severity === 'low' ? '#2D6A4F' : '#B7770D';
+  const statusBadge = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
+
+  const ts = issue.timestamp ? new Date(issue.timestamp * 1000) : null;
+  const dateStr = ts ? ts.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown';
+
+  // Hero
+  const hero = issue.image
+    ? `<div class="detail-hero">
+         <img src="${issue.image}"/>
+         <div class="detail-hero-overlay">
+           <div class="detail-hero-title">${escHtml(tagLabel)} — ${escHtml(issue.area || 'Delhi')}</div>
+         </div>
+         <button class="detail-close" onclick="closeDetail()">×</button>
+       </div>`
+    : `<div class="detail-hero" style="background:linear-gradient(135deg, ${sevColor} 0%, #1B4F72 100%); min-height:120px">
+         <div class="detail-hero-overlay">
+           <div class="detail-hero-title">${escHtml(tagLabel)} — ${escHtml(issue.area || 'Delhi')}</div>
+         </div>
+         <button class="detail-close" onclick="closeDetail()">×</button>
+       </div>`;
+
+  // Status timeline (large)
+  const tl = d.timeline.map((step, i) => `
+    ${i > 0 ? `<div class="tl-line-big ${d.timeline[i-1].state==='done'||(d.timeline[i-1].state==='active'&&i-1<d.timeline.findIndex(x=>x.state==='active'))?'done':''}"></div>` : ''}
+    <div class="tl-step-big">
+      <div class="tl-circle ${step.state}">${step.state==='done'?'✓':i+1}</div>
+      <span style="color:${step.state==='active'?'var(--accent)':step.state==='done'?'var(--green)':'var(--text3)'};font-weight:${step.state!=='pending'?'600':'400'}">${step.label}</span>
+    </div>
+  `).join('');
+
+  // GPS / map link
+  const gpsBlock = (issue.lat && issue.lng)
+    ? `<div class="detail-row"><span class="k">GPS</span><span class="v">${issue.lat.toFixed(5)}, ${issue.lng.toFixed(5)} · <a href="${d.maps_link}" target="_blank" style="color:var(--blue)">View on map</a></span></div>`
+    : `<div class="detail-row"><span class="k">GPS</span><span class="v text-muted">Not provided</span></div>`;
+
+  // Matched authority block
+  const ag = d.matched_agency;
+  const agencyHTML = ag ? `
+    <div class="agency-card">
+      <div class="agency-name">${escHtml(ag.name)}</div>
+      <div class="agency-focus">${escHtml(ag.focus || '')} · ${escHtml(ag.department || ag.area || '')}</div>
+      <div class="agency-actions">
+        ${ag.phone ? `<a href="tel:${ag.phone}" class="btn btn-outline btn-sm">📞 ${escHtml(ag.phone)}</a>` : ''}
+        ${ag.email ? `<a href="mailto:${ag.email}" class="btn btn-outline btn-sm">✉ Email</a>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="emailAuthority(${issue.id})">📧 AI Draft Complaint</button>
+      </div>
+    </div>` : `<div class="text-muted text-sm">No matching authority found.</div>`;
+
+  // NGOs working in area
+  const ngosHTML = (d.nearby_ngos && d.nearby_ngos.length) ? d.nearby_ngos.map(n => `
+    <div class="ngo-row">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:4px">
+        <div style="font-weight:600; font-size:13.5px">${escHtml(n.name)}</div>
+        <div style="font-size:11px; color:var(--text2)">${n.distance_km != null ? n.distance_km + ' km away' : ''}</div>
+      </div>
+      <div style="font-size:12px; color:var(--text2); margin-bottom:6px">${escHtml(n.focus || '')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px">
+        <span class="badge tag-${n.tag||'other'}">${TAG_LABELS[n.tag]||'Other'}</span>
+        <span style="color:var(--green)">✓ ${n.issues_resolved||0} resolved</span>
+        <span style="color:var(--amber)">★ ${(n.rating||4).toFixed(1)}</span>
+        ${n.phone ? `<a href="tel:${n.phone}" style="color:var(--blue)">📞 Call</a>` : ''}
+        ${n.email ? `<a href="mailto:${n.email}" style="color:var(--blue)">✉ Email</a>` : ''}
+      </div>
+    </div>
+  `).join('') : `<div class="text-muted text-sm">No NGOs found nearby for this category.</div>`;
+
+  document.getElementById('detail-card').innerHTML = `
+    ${hero}
+
+    <!-- Status timeline -->
+    <div class="detail-section">
+      <div class="detail-section-title">Resolution Progress</div>
+      <div class="timeline-big">${tl}</div>
+    </div>
+
+    <!-- Description -->
+    <div class="detail-section">
+      <div class="detail-section-title">Description</div>
+      <div style="font-size:14px; line-height:1.6">${escHtml(issue.description)}</div>
+    </div>
+
+    <!-- Metadata grid -->
+    <div class="detail-section">
+      <div class="detail-section-title">Issue Information</div>
+      <div class="detail-grid">
+        <div>
+          <div class="detail-row"><span class="k">Issue ID</span><span class="v">PM-${issue.id}</span></div>
+          <div class="detail-row"><span class="k">Category</span><span class="v">${escHtml(tagLabel)}</span></div>
+          <div class="detail-row"><span class="k">Severity</span><span class="v" style="color:${sevColor}">${(issue.severity||'medium').toUpperCase()}</span></div>
+          <div class="detail-row"><span class="k">Status</span><span class="v"><span class="badge ${statusBadge[issue.status||'open']}">${issue.status||'open'}</span></span></div>
+          <div class="detail-row"><span class="k">Reported on</span><span class="v">${escHtml(dateStr)}</span></div>
+        </div>
+        <div>
+          <div class="detail-row"><span class="k">Area</span><span class="v">${escHtml(issue.area || '—')}</span></div>
+          <div class="detail-row"><span class="k">Landmark</span><span class="v">${escHtml(issue.landmark || '—')}</span></div>
+          ${gpsBlock}
+          <div class="detail-row"><span class="k">Reporter</span><span class="v">${escHtml(issue.user || 'anonymous')}</span></div>
+          <div class="detail-row"><span class="k">Contact</span><span class="v">${escHtml(issue.contact || 'Not shared')}</span></div>
+          <div class="detail-row"><span class="k">Upvotes</span><span class="v">▲ ${issue.upvotes || 0}</span></div>
+          <div class="detail-row"><span class="k">Verifications</span><span class="v">✓ ${issue.verified || 0}</span></div>
+          ${issue.assigned_to ? `<div class="detail-row"><span class="k">Assigned to</span><span class="v">${escHtml(issue.assigned_to)}</span></div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- Authority -->
+    <div class="detail-section">
+      <div class="detail-section-title">Government Authority (AI-matched)</div>
+      ${agencyHTML}
+    </div>
+
+    <!-- NGOs -->
+    <div class="detail-section">
+      <div class="detail-section-title">NGOs Working on this Issue (Nearby)</div>
+      ${ngosHTML}
+    </div>
+
+    <!-- Footer actions -->
+    <div class="detail-section" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
+      ${d.maps_link ? `<a href="${d.maps_link}" target="_blank" class="btn btn-outline btn-sm">🗺️ Open Location</a>` : ''}
+      <button class="btn btn-primary btn-sm" onclick="emailAuthority(${issue.id})">📧 Draft Complaint with AI</button>
+    </div>
+  `;
+}
+
+// Reuse the dispatch flow from issues.html — opens the AI-draft modal.
+async function emailAuthority(id) {
+  // Build a tiny inline modal here so this page is standalone
+  let m = document.getElementById('dispatch-modal-mr');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'dispatch-modal-mr';
+    m.className = 'detail-overlay';
+    m.style.zIndex = 9100;
+    m.innerHTML = `<div class="detail-card" id="dispatch-card-mr"></div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+  }
+  const card = document.getElementById('dispatch-card-mr');
+  card.innerHTML = `<div style="text-align:center; padding:60px"><div class="spinner" style="margin:0 auto 12px"></div><div class="text-muted">AI is drafting a formal complaint...</div></div>`;
+  m.classList.add('open');
+
+  try {
+    const r = await fetch(`/ai/draft-dispatch/${id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ citizen: CURRENT_USER }),
+    });
+    const d = await r.json();
+    if (d.error) {
+      card.innerHTML = `<div style="padding:30px;text-align:center;color:var(--accent)">${escHtml(d.error)}</div>`;
+      return;
+    }
+    const llmBadge = d.llm_drafted
+      ? '<span style="background:rgba(45,106,79,0.12); color:#2D6A4F; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">✨ AI-DRAFTED</span>'
+      : '<span style="background:rgba(183,119,13,0.12); color:#B7770D; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">📋 TEMPLATE</span>';
+    card.innerHTML = `
+      <div class="detail-section" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'DM Serif Display',serif;font-size:18px">📧 Authority Dispatch</div>
+        <button class="detail-close" style="position:static;background:var(--surface2);color:var(--text)" onclick="document.getElementById('dispatch-modal-mr').classList.remove('open')">×</button>
+      </div>
+      <div class="detail-section">${llmBadge}
+        <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px">
+          <div style="font-size:11px;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Recipient</div>
+          <div style="font-weight:600">${escHtml(d.recipient_name)}</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:2px">${d.recipient_email ? `<a href="mailto:${d.recipient_email}" style="color:var(--blue)">${d.recipient_email}</a>` : '<span class="text-muted">no email</span>'} ${d.recipient_phone ? `· <a href="tel:${d.recipient_phone}" style="color:var(--blue)">📞 ${d.recipient_phone}</a>` : ''}</div>
+        </div>
+        <div style="margin-top:12px">
+          <label style="font-size:12px; color:var(--text2); display:block; margin-bottom:4px">Subject</label>
+          <input id="dr-subj" value="${escHtml(d.subject)}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px"/>
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-size:12px; color:var(--text2); display:block; margin-bottom:4px">Body</label>
+          <textarea id="dr-body" rows="12" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;line-height:1.55;resize:vertical">${escHtml(d.body)}</textarea>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-primary" style="flex:1;justify-content:center" onclick="(function(){const u='mailto:${d.recipient_email}?subject='+encodeURIComponent(document.getElementById('dr-subj').value)+'&body='+encodeURIComponent(document.getElementById('dr-body').value);window.location.href=u;})()">📧 Open in Email App</button>
+          <button class="btn btn-outline" onclick="navigator.clipboard.writeText(document.getElementById('dr-subj').value+'\\n\\n'+document.getElementById('dr-body').value).then(()=>showToast('Copied'))">📋 Copy</button>
+        </div>
+      </div>`;
+  } catch (e) {
+    card.innerHTML = `<div style="padding:30px;text-align:center;color:var(--accent)">Network error</div>`;
+  }
+}
+
 function escHtml(s) {
-  if(!s)return'';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 load();

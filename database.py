@@ -2,14 +2,6 @@
 Firebase Firestore database layer for Problem Map.
 Replaces the previous PostgreSQL backend. All public function signatures
 are preserved so app.py keeps working without changes.
-
-Setup:
-1. Create a Firebase project at https://console.firebase.google.com
-2. Enable Firestore (Native mode)
-3. Generate a service-account key:  Project Settings → Service accounts → "Generate new private key"
-4. Save the JSON file as `firebase_key.json` in the project root
-   OR set env var GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
-   OR set env var FIREBASE_CREDENTIALS_JSON to the JSON string itself (good for Render/Heroku)
 """
 
 import os, time, math, json
@@ -25,12 +17,10 @@ def _init_firebase():
         _db = firestore.client()
         return _db
 
-    # 1) JSON string in env (for Render / Heroku)
     cred_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
     if cred_json:
         cred = credentials.Certificate(json.loads(cred_json))
     else:
-        # 2) File path (local dev)
         path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'firebase_key.json')
         if not os.path.exists(path):
             raise FileNotFoundError(
@@ -45,7 +35,6 @@ def _init_firebase():
 
 
 def get_db():
-    """Returns the Firestore client (kept for compatibility)."""
     global _db
     if _db is None:
         _init_firebase()
@@ -53,30 +42,24 @@ def get_db():
 
 
 # ── COLLECTION NAMES ──────────────────────────────────
-USERS         = 'users'
-ISSUES        = 'issues'
-NGOS          = 'ngos'
-GOV_AGENCIES  = 'gov_agencies'
-COMMUNITY     = 'community_posts'
+USERS           = 'users'
+ISSUES          = 'issues'
+NGOS            = 'ngos'
+GOV_AGENCIES    = 'gov_agencies'
+COMMUNITY       = 'community_posts'
 COMMUNITY_LIKES = 'community_likes'
-ISSUE_ACTIONS = 'issue_actions'
-SPAM_REPORTS  = 'spam_reports'        # NEW — for AI spam moderation
-REVIEW_QUEUE  = 'review_queue'        # NEW — moderate queue
-AI_INSIGHTS   = 'ai_insights'         # NEW — cached AI insights
+ISSUE_ACTIONS   = 'issue_actions'
+SPAM_REPORTS    = 'spam_reports'
+REVIEW_QUEUE    = 'review_queue'
+AI_INSIGHTS     = 'ai_insights'
 
 
-# ── INIT (creates indexes / seed data) ────────────────
 def init_db():
-    """Initialize Firestore — collections are created on first write,
-    so we just ensure the client is connected."""
     get_db()
     return True
 
 
-# ── ID HELPER ─────────────────────────────────────────
 def _next_int_id(collection_name):
-    """Firestore uses string doc IDs by default. We keep numeric IDs (1,2,3…)
-    so existing app.py routes like /upvote/<int:id> keep working."""
     db = get_db()
     counter_ref = db.collection('_counters').document(collection_name)
     snap = counter_ref.get()
@@ -94,23 +77,25 @@ def insert_issue(area, description, tag, user, lat, lng,
     db = get_db()
     issue_id = _next_int_id(ISSUES)
     doc = {
-        'id':          issue_id,
-        'area':        area,
-        'description': description,
-        'tag':         tag,
-        'user':        user,
-        'lat':         lat,
-        'lng':         lng,
-        'image':       image,
-        'severity':    severity,
-        'landmark':    landmark,
-        'contact':     contact,
-        'timestamp':   time.time(),
-        'upvotes':     0,
-        'priority':    0.0,
-        'verified':    0,
-        'status':      'open',
-        'assigned_to': None,
+        'id':           issue_id,
+        'area':         area,
+        'description':  description,
+        'tag':          tag,
+        'user':         user,
+        'lat':          lat,
+        'lng':          lng,
+        'image':        image,
+        'severity':     severity,
+        'landmark':     landmark,
+        'contact':      contact,
+        'timestamp':    time.time(),
+        'upvotes':      0,
+        'priority':     0.0,
+        'verified':     0,
+        'is_verified':  False,   # P-003: independent verified flag
+        'is_escalated': False,   # P-003: independent escalated flag
+        'status':       'open',  # only changes to 'resolved'
+        'assigned_to':  None,
     }
     db.collection(ISSUES).document(str(issue_id)).set(doc)
     return issue_id
@@ -145,7 +130,7 @@ def upvote_issue(issue_id):
 def verify_issue(issue_id):
     db = get_db()
     ref = db.collection(ISSUES).document(str(issue_id))
-    ref.update({'verified': firestore.Increment(1), 'status': 'verified'})
+    ref.update({'verified': firestore.Increment(1), 'is_verified': True})
 
 
 def resolve_issue(issue_id, assigned_to=None):
@@ -160,7 +145,7 @@ def resolve_issue(issue_id, assigned_to=None):
 def escalate_issue(issue_id, assigned_to=None):
     db = get_db()
     ref = db.collection(ISSUES).document(str(issue_id))
-    update = {'status': 'escalated'}
+    update = {'is_escalated': True}
     if assigned_to:
         update['assigned_to'] = assigned_to
     ref.update(update)
@@ -168,7 +153,14 @@ def escalate_issue(issue_id, assigned_to=None):
 
 # ── ISSUE ACTIONS (toggle: upvote, verify, escalate) ──
 def toggle_issue_action(user, issue_id, action):
-    """Toggle a user action on an issue. Returns 'added' or 'removed'."""
+    """
+    Toggle a user action on an issue. Returns 'added' or 'removed'.
+
+    P-003 changes:
+    - verify  → uses is_verified  (bool) instead of touching status
+    - escalate → uses is_escalated (bool) instead of touching status
+    - status field is now ONLY changed by resolve_issue() → 'resolved'
+    """
     db = get_db()
     key = f"{user}__{issue_id}__{action}"
     ref = db.collection(ISSUE_ACTIONS).document(key)
@@ -176,34 +168,42 @@ def toggle_issue_action(user, issue_id, action):
     issue_ref = db.collection(ISSUES).document(str(issue_id))
 
     if snap.exists:
+        # ── REMOVE action ────────────────────────────────
         ref.delete()
         if action == 'upvote':
             issue_ref.update({'upvotes': firestore.Increment(-1)})
         elif action == 'verify':
-            issue_ref.update({'verified': firestore.Increment(-1)})
+            issue_ref.update({
+                'verified':    firestore.Increment(-1),
+                'is_verified': False,   # clear independent flag
+            })
+        elif action == 'escalate':
+            issue_ref.update({'is_escalated': False})   # clear independent flag
         return 'removed'
+
     else:
+        # ── ADD action ───────────────────────────────────
         ref.set({'user_name': user, 'issue_id': issue_id, 'action': action,
                  'timestamp': time.time()})
         if action == 'upvote':
             issue_ref.update({'upvotes': firestore.Increment(1)})
         elif action == 'verify':
-            issue_ref.update({'verified': firestore.Increment(1), 'status': 'verified'})
+            issue_ref.update({
+                'verified':    firestore.Increment(1),
+                'is_verified': True,    # set independent flag
+            })
         elif action == 'escalate':
-            issue_ref.update({'status': 'escalated'})
+            issue_ref.update({'is_escalated': True})    # set independent flag
         return 'added'
 
 
 def get_user_actions(user, issue_ids):
-    """Returns dict: { issue_id: set('upvote','verify','escalate') }
-    Uses single-field query + client-side filter to avoid composite indexes."""
     if not user or not issue_ids:
         return {}
     db = get_db()
     result = {}
     issue_id_set = set(issue_ids)
     try:
-        # Single where → no composite index required
         docs = db.collection(ISSUE_ACTIONS).where('user_name', '==', user).stream()
         for d in docs:
             data = d.to_dict()
@@ -232,11 +232,9 @@ def get_user_stats(username):
     db = get_db()
     user_doc = db.collection(USERS).document(username).get()
     points = user_doc.to_dict().get('points', 0) if user_doc.exists else 0
-
     issues = list(db.collection(ISSUES).where('user', '==', username).stream())
     total = len(issues)
     resolved = sum(1 for i in issues if i.to_dict().get('status') == 'resolved')
-
     return {'points': points, 'total_reported': total, 'total_resolved': resolved}
 
 
@@ -272,13 +270,11 @@ def get_nearby_ngos(lat, lng, tag=None, limit=5):
     db = get_db()
     q = db.collection(NGOS)
     if tag and tag != 'other':
-        # Firestore can't do OR easily — fetch tag matches + 'other' separately
         rows1 = [d.to_dict() for d in q.where('tag', '==', tag).stream()]
         rows2 = [d.to_dict() for d in q.where('tag', '==', 'other').stream()]
         rows = rows1 + rows2
     else:
         rows = [d.to_dict() for d in q.stream()]
-
     for r in rows:
         if r.get('lat') is None or r.get('lng') is None:
             r['distance_km'] = 999
@@ -328,16 +324,13 @@ def like_post(post_id, user):
     return True
 
 
-# ── SPAM / MODERATION (NEW for AI) ────────────────────
+# ── SPAM / MODERATION ────────────────────────────────
 def save_spam_report(report_data, ai_analysis):
-    """Move a flagged report into spam_reports (does NOT delete original)."""
     db = get_db()
     sid = _next_int_id(SPAM_REPORTS)
     db.collection(SPAM_REPORTS).document(str(sid)).set({
-        'id':          sid,
-        'report':      report_data,
-        'ai_analysis': ai_analysis,
-        'timestamp':   time.time(),
+        'id': sid, 'report': report_data,
+        'ai_analysis': ai_analysis, 'timestamp': time.time(),
     })
     return sid
 
@@ -346,11 +339,8 @@ def add_to_review_queue(report_data, ai_analysis):
     db = get_db()
     rid = _next_int_id(REVIEW_QUEUE)
     db.collection(REVIEW_QUEUE).document(str(rid)).set({
-        'id':          rid,
-        'report':      report_data,
-        'ai_analysis': ai_analysis,
-        'reviewed':    False,
-        'timestamp':   time.time(),
+        'id': rid, 'report': report_data,
+        'ai_analysis': ai_analysis, 'reviewed': False, 'timestamp': time.time(),
     })
     return rid
 
@@ -379,8 +369,6 @@ def get_review_queue(limit=50):
 
 
 def count_user_recent_reports(user, seconds=300):
-    """Count reports by a user in the last `seconds`. Used for spam detection.
-    Avoids composite-index requirement by filtering timestamp client-side."""
     if not user:
         return 0
     db = get_db()
@@ -393,12 +381,11 @@ def count_user_recent_reports(user, seconds=300):
         return 0
 
 
-# ── SEEDING (NGOs, gov, demo issues) ─────────────────
+# ── SEEDING ──────────────────────────────────────────
 def seed_real_issues():
     """Seed initial NGOs, government agencies, and demo issues if empty."""
     db = get_db()
 
-    # Seed NGOs
     if not list(db.collection(NGOS).limit(1).stream()):
         ngos = [
             ('WaterAid India','water','+91-11-4052-4444','info@wateraid.org','Hauz Khas, South Delhi','Hauz Khas',28.5494,77.2001,'💧','Clean water & sanitation infrastructure',42,18,4.6),
@@ -428,7 +415,6 @@ def seed_real_issues():
                 'org_type': 'ngo',
             })
 
-    # Seed Government agencies
     if not list(db.collection(GOV_AGENCIES).limit(1).stream()):
         agencies = [
             ('MCD North Delhi','garbage','155305','northdelhi@mcd.gov.in','Civic Centre, New Delhi','Connaught Place',28.6315,77.2167,'🏛️','North Delhi garbage & civic complaints','Municipal Corporation of Delhi'),
@@ -452,20 +438,19 @@ def seed_real_issues():
                 'icon': a[8], 'focus': a[9], 'department': a[10],
             })
 
-    # Seed demo issues
     if not list(db.collection(ISSUES).limit(1).stream()):
         seeds = [
             ('Rohini',          'Massive pothole on Sector 3 road near D-Mall causing daily accidents', 'pothole', 'system_seed', 'open',     14, 28.7041, 77.1025, 'high'),
             ('Connaught Place', 'Streetlight not working on Outer Circle for past 2 weeks',              'streetlight','system_seed','open',  6, 28.6315, 77.2167, 'medium'),
             ('Lajpat Nagar',    'Garbage piling up near Central Market - nobody is collecting',         'garbage', 'system_seed','open',     11, 28.5677, 77.2378, 'high'),
-            ('Dwarka',          'Sewage overflow on Sector 6 main road, very bad smell',                'sewage',  'system_seed','verified', 9, 28.5921, 77.0460, 'high'),
-            ('Karol Bagh',      'Water pipeline leak flooding basement of nearby shops',                'water',   'system_seed','escalated',7, 28.6514, 77.1907, 'medium'),
+            ('Dwarka',          'Sewage overflow on Sector 6 main road, very bad smell',                'sewage',  'system_seed','open',     9, 28.5921, 77.0460, 'high'),
+            ('Karol Bagh',      'Water pipeline leak flooding basement of nearby shops',                'water',   'system_seed','open',     7, 28.6514, 77.1907, 'medium'),
             ('Hauz Khas',       'Traffic signal not functioning at main junction during peak hours',    'traffic', 'system_seed','open',    13, 28.5494, 77.2001, 'high'),
             ('Saket',           'Loud construction noise late at night near residential area',          'noise',   'system_seed','open',     5, 28.5244, 77.2090, 'medium'),
             ('Shahdara',        'Power cut for 6+ hours daily, transformer issue',                      'electricity','system_seed','open', 8, 28.6706, 77.2944, 'high'),
-            ('Mayur Vihar',     'Fallen tree blocking the road after recent storm',                     'tree',    'system_seed','resolved',4, 28.6090, 77.2944, 'medium'),
+            ('Mayur Vihar',     'Fallen tree blocking the road after recent storm',                     'tree',    'system_seed','resolved', 4, 28.6090, 77.2944, 'medium'),
             ('Janakpuri',       'Pothole near A-block causing two-wheeler accidents',                   'pothole', 'system_seed','open',    10, 28.6219, 77.0878, 'high'),
-            ('Pitampura',       'Open drain near community park is dangerous for children',             'sewage',  'system_seed','verified',6, 28.7007, 77.1311, 'medium'),
+            ('Pitampura',       'Open drain near community park is dangerous for children',             'sewage',  'system_seed','open',     6, 28.7007, 77.1311, 'medium'),
             ('Vasant Kunj',     'Streetlights flickering on Sector C roads',                            'streetlight','system_seed','open', 3, 28.5200, 77.1590, 'low'),
         ]
         for s in seeds:
@@ -475,6 +460,9 @@ def seed_real_issues():
                 'user': s[3], 'status': s[4], 'upvotes': s[5],
                 'lat': s[6], 'lng': s[7], 'severity': s[8],
                 'image': None, 'landmark': '', 'contact': '',
-                'priority': 0.0, 'verified': 1 if s[4] != 'open' else 0,
-                'assigned_to': None, 'timestamp': time.time() - (3600 * (12 - len(s)))
+                'priority': 0.0, 'verified': 0,
+                'is_verified':  False,
+                'is_escalated': False,
+                'assigned_to': None,
+                'timestamp': time.time() - (3600 * (12 - len(s)))
             })

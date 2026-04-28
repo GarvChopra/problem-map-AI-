@@ -4,6 +4,7 @@ firebase_key.json
 service-account*.json
 
 # Environment
+
 .env
 .env.local
 .env.*.local
@@ -31,3 +32,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+
+

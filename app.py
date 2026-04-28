@@ -512,6 +512,49 @@ def ai_spam_reports():
     })
 
 
+@app.route('/issue/<int:issue_id>/detail')
+def issue_detail(issue_id):
+    """Returns full detail of a single issue: metadata + matched NGO + matched
+    govt agency + status timeline. Used by 'My Reports' detail view."""
+    try:
+        all_issues = get_issues()
+        issue = next((i for i in all_issues if i.get('id') == issue_id), None)
+        if not issue:
+            return jsonify({'error': 'Issue not found'}), 404
+
+        # Match nearest NGO working on this category
+        lat = issue.get('lat') or 28.6139
+        lng = issue.get('lng') or 77.2090
+        nearby_ngos = get_nearby_ngos(lat, lng, tag=issue.get('tag'), limit=3)
+
+        # Match the right govt agency
+        agencies = get_gov_agencies()
+        matched_agency = ai_engine.find_authority_for_issue(issue, agencies)
+
+        # Build status timeline
+        steps = ['open', 'verified', 'escalated', 'resolved']
+        cur = issue.get('status') or 'open'
+        cur_idx = steps.index(cur) if cur in steps else 0
+        timeline = []
+        for i, s in enumerate(steps):
+            timeline.append({
+                'label': s.title(),
+                'state': 'done' if i < cur_idx else ('active' if i == cur_idx else 'pending'),
+            })
+
+        return jsonify({
+            'issue':           issue,
+            'nearby_ngos':     nearby_ngos,
+            'matched_agency':  matched_agency,
+            'timeline':        timeline,
+            'maps_link': (f"https://maps.google.com/?q={lat},{lng}"
+                          if issue.get('lat') and issue.get('lng') else None),
+        })
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'error': f'Server error: {e}'}), 500
+
+
 @app.route('/ai/analyze-image', methods=['POST'])
 def ai_analyze_image():
     """Analyze a civic-issue photo with Vision AI.

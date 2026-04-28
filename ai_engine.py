@@ -873,7 +873,7 @@ def analyze_image(image_b64, mime_type='image/jpeg'):
             )
             print("[analyze_image] calling Groq Llama-3.2-Vision...")
             completion = client.chat.completions.create(
-                model="llama-3.2-11b-vision-preview",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[{
                     "role": "user",
                     "content": [
