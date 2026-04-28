@@ -827,3 +827,364 @@ The user is: {current_user or 'a citizen of Delhi'}."""
     bits.append("• Which areas are cleanest?")
 
     return {'type': 'text', 'message': '\n'.join(bits)}
+
+
+# ════════════════════════════════════════════════════════════════════
+# 7. VISION AI — analyze civic-issue photos with Groq Llama-3.2-Vision
+# ════════════════════════════════════════════════════════════════════
+
+VISION_PROMPT = """You are analyzing a photo of a possible civic issue in Delhi, India.
+
+Look at the image and respond with ONLY a valid JSON object (no markdown, no extra text) in this exact format:
+{
+  "category": "pothole" | "water" | "garbage" | "streetlight" | "traffic" | "noise" | "sewage" | "electricity" | "tree" | "other",
+  "severity": "low" | "medium" | "high",
+  "description": "1-2 sentence description of what is visible (e.g. 'Large pothole on a tarmac road, approximately 1 meter wide. Causes traffic obstruction.')",
+  "confidence": 0-100
+}
+
+Severity rules:
+- "high": dangerous, blocking traffic/access, large-scale, immediate hazard, public safety risk
+- "medium": noticeable issue, needs attention but not urgent
+- "low": minor, cosmetic, can wait
+
+If the image does NOT show a civic issue (e.g. selfie, indoor photo, abstract), return:
+{"category": "other", "severity": "low", "description": "No civic issue detected in image.", "confidence": 0}
+
+Respond with JSON only."""
+
+
+def analyze_image(image_b64, mime_type='image/jpeg'):
+    """
+    Analyzes a civic-issue photo using Groq's Llama-3.2-Vision (with Gemini fallback).
+    Returns dict: { category, severity, description, confidence, source }
+    """
+    import json as _json
+    import re as _re
+
+    # ── Try Groq first (fast, generous free tier) ──
+    groq_key = os.environ.get('GROQ_API_KEY')
+    if groq_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=groq_key,
+            )
+            print("[analyze_image] calling Groq Llama-3.2-Vision...")
+            completion = client.chat.completions.create(
+                model="llama-3.2-11b-vision-preview",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": VISION_PROMPT},
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                    ],
+                }],
+                max_tokens=300,
+                temperature=0.2,
+            )
+            raw = (completion.choices[0].message.content or '').strip()
+            return _parse_vision_json(raw, source='groq')
+        except Exception as e:
+            print(f"[analyze_image] Groq failed: {e}")
+            # fall through to Gemini
+
+    # ── Fallback: Gemini Vision ──
+    gemini_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+    if gemini_key:
+        try:
+            import google.generativeai as genai
+            import base64 as _b64
+            genai.configure(api_key=gemini_key)
+            print("[analyze_image] calling Gemini Vision...")
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            img_bytes = _b64.b64decode(image_b64)
+            resp = model.generate_content([
+                VISION_PROMPT,
+                {"mime_type": mime_type, "data": img_bytes},
+            ])
+            raw = (resp.text or '').strip()
+            return _parse_vision_json(raw, source='gemini')
+        except Exception as e:
+            print(f"[analyze_image] Gemini failed: {e}")
+
+    # ── No vision API available — fall back to nothing ──
+    return {
+        'category': 'other',
+        'severity': 'medium',
+        'description': 'AI vision unavailable. Please describe the issue manually.',
+        'confidence': 0,
+        'source': 'none',
+        'error': 'No vision API key configured (set GROQ_API_KEY or GEMINI_API_KEY)',
+    }
+
+
+def _parse_vision_json(raw_text, source='unknown'):
+    """Robustly extract JSON from a vision-model response, even if it's wrapped
+    in markdown code fences or has extra text."""
+    import json as _json, re as _re
+
+    # Strip markdown code fences
+    cleaned = _re.sub(r'^```(?:json)?\s*', '', raw_text.strip())
+    cleaned = _re.sub(r'\s*```$', '', cleaned).strip()
+
+    # If there's extra prose, find the JSON object
+    m = _re.search(r'\{[^{}]*"category"[^{}]*\}', cleaned, _re.DOTALL)
+    if m:
+        cleaned = m.group(0)
+
+    try:
+        data = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        # Try greedy match across whole string
+        m = _re.search(r'\{.*\}', raw_text, _re.DOTALL)
+        if not m:
+            return {
+                'category': 'other', 'severity': 'medium',
+                'description': raw_text[:200] or 'Could not parse AI response',
+                'confidence': 0, 'source': source,
+                'error': 'JSON parse failed',
+            }
+        try:
+            data = _json.loads(m.group(0))
+        except _json.JSONDecodeError:
+            return {
+                'category': 'other', 'severity': 'medium',
+                'description': raw_text[:200],
+                'confidence': 0, 'source': source,
+                'error': 'JSON parse failed',
+            }
+
+    # Validate fields with safe defaults
+    valid_cats = {'pothole','water','garbage','streetlight','traffic',
+                  'noise','sewage','electricity','tree','other'}
+    valid_sev  = {'low','medium','high'}
+
+    return {
+        'category':    data.get('category', 'other') if data.get('category') in valid_cats else 'other',
+        'severity':    data.get('severity', 'medium') if data.get('severity') in valid_sev else 'medium',
+        'description': str(data.get('description', ''))[:300] or 'AI analysis complete',
+        'confidence':  max(0, min(100, int(data.get('confidence', 70)))),
+        'source':      source,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+# 8. AUTHORITY DISPATCH — draft formal complaint emails to govt agencies
+# ════════════════════════════════════════════════════════════════════
+
+# Maps issue category → preferred authority (matches database.py seeded agencies)
+AUTHORITY_BY_TAG = {
+    'pothole':     'PWD Delhi (Roads)',
+    'water':       'Delhi Jal Board (Helpline)',
+    'sewage':      'Delhi Jal Board (Helpline)',
+    'garbage':     'MCD',     # zone-specific resolved at runtime
+    'streetlight': 'NDMC',    # zone-specific resolved at runtime
+    'traffic':     'Delhi Traffic Police',
+    'electricity': 'BSES',    # zone-specific resolved at runtime
+    'noise':       'Environment Dept Delhi',
+    'tree':        'Forest Dept Delhi',
+    'other':       'Delhi Citizen Helpline',
+}
+
+# Rough zone resolver for MCD / BSES / NDMC variants
+def _resolve_zone_authority(tag, area):
+    """Pick the right MCD / BSES variant based on Delhi zone."""
+    a = (area or '').lower()
+    NORTH = {'rohini','pitampura','model town','shalimar bagh','burari','narela',
+             'bawana','alipur','mukherjee nagar','gtb nagar','adarsh nagar',
+             'ashok vihar','wazirabad','bhalswa','kamla nagar','civil lines'}
+    SOUTH = {'saket','vasant kunj','mehrauli','malviya nagar','hauz khas',
+             'greater kailash','lajpat nagar','kalkaji','tughlakabad','okhla',
+             'badarpur','sangam vihar','govindpuri','sarita vihar','jasola',
+             'munirka','rk puram','vasant vihar','chirag delhi','pushp vihar','deoli'}
+    EAST  = {'laxmi nagar','preet vihar','shahdara','geeta colony','mayur vihar',
+             'patparganj','seelampur','welcome','mustafabad','bhajanpura',
+             'vishwas nagar','pandav nagar','mandawali','anand vihar','karkardooma',
+             'dilshad garden','jhilmil','vivek vihar','yamuna vihar','karawal nagar',
+             'nand nagri','brahmpuri','gokulpuri','jaffrabad','maujpur','khajuri khas'}
+    if tag == 'garbage':
+        if any(z in a for z in NORTH): return 'MCD North Delhi'
+        if any(z in a for z in SOUTH): return 'MCD South Delhi'
+        if any(z in a for z in EAST):  return 'MCD East Delhi'
+        return 'MCD South Delhi'
+    if tag == 'electricity':
+        if any(z in a for z in EAST): return 'BSES Yamuna'
+        return 'BSES Rajdhani'
+    if tag == 'streetlight':
+        if 'connaught' in a or 'central' in a: return 'NDMC (New Delhi)'
+        # streetlight outside NDMC zone → MCD
+        if any(z in a for z in NORTH): return 'MCD North Delhi'
+        if any(z in a for z in EAST):  return 'MCD East Delhi'
+        return 'MCD South Delhi'
+    return AUTHORITY_BY_TAG.get(tag, 'Delhi Citizen Helpline')
+
+
+def find_authority_for_issue(issue, gov_agencies):
+    """Match an issue to the most appropriate government agency.
+    Returns the agency dict, or None if no match."""
+    if not issue or not gov_agencies:
+        return None
+    tag = issue.get('tag') or 'other'
+    area = issue.get('area') or ''
+    target_name = _resolve_zone_authority(tag, area)
+
+    # First try exact name match
+    for ag in gov_agencies:
+        if ag.get('name') == target_name:
+            return ag
+    # Loose match (e.g. target=MCD South Delhi → MCD anything)
+    for ag in gov_agencies:
+        if (target_name.split()[0] in (ag.get('name') or '')
+                and ag.get('tag') == tag):
+            return ag
+    # Fallback: any agency matching the tag
+    for ag in gov_agencies:
+        if ag.get('tag') == tag:
+            return ag
+    # Last resort: general helpline
+    for ag in gov_agencies:
+        if ag.get('tag') == 'other':
+            return ag
+    return gov_agencies[0] if gov_agencies else None
+
+
+def draft_dispatch(issue, agency, citizen_name=None):
+    """
+    Draft a formal complaint email from a citizen to a government agency.
+    Uses HF Router (same chat backend) if available, else falls back to a
+    deterministic template.
+
+    Returns: { recipient_name, recipient_email, recipient_phone, subject, body, agency }
+    """
+    if not issue or not agency:
+        return None
+
+    # Build the basic facts the LLM (or template) needs
+    citizen = citizen_name or issue.get('user') or 'A concerned citizen'
+    area = issue.get('area') or 'Delhi'
+    tag = (issue.get('tag') or 'civic').replace('_', ' ').title()
+    severity = (issue.get('severity') or 'medium').upper()
+    description = issue.get('description') or 'No description provided'
+    landmark = issue.get('landmark') or ''
+    lat = issue.get('lat'); lng = issue.get('lng')
+    issue_id = issue.get('id', '?')
+    timestamp = issue.get('timestamp')
+    if timestamp:
+        from datetime import datetime
+        date_str = datetime.fromtimestamp(timestamp).strftime('%d %B %Y, %H:%M')
+    else:
+        date_str = 'recent'
+
+    location_str = area
+    if landmark: location_str += f" (near {landmark})"
+    if lat and lng: location_str += f" | GPS: {lat:.5f}, {lng:.5f}"
+    if lat and lng: maps_link = f"https://maps.google.com/?q={lat},{lng}"
+    else: maps_link = None
+
+    # ── Try LLM for a polished draft ──
+    api_key = (os.environ.get('HF_TOKEN')
+               or os.environ.get('HUGGINGFACE_API_KEY')
+               or os.environ.get('HUGGINGFACE_TOKEN'))
+    if api_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=api_key)
+
+            sys_prompt = """You are drafting a formal complaint email from a Delhi citizen to a government agency about a civic issue. Tone: respectful, factual, urgent but not aggressive. No emojis, no markdown headers. Include all the provided facts. End with the citizen's name. Keep it under 200 words. Output ONLY the email body — no subject line, no salutation guesses, no 'Sincerely' added by you (we'll handle that). Start directly with 'Dear ...' and end with the citizen's name."""
+
+            user_prompt = f"""Draft a complaint email with these facts:
+- Issue: {tag}
+- Severity: {severity}
+- Location: {location_str}
+- Date reported: {date_str}
+- Citizen description: "{description}"
+- Recipient: {agency.get('name', 'Authority')} ({agency.get('focus','')})
+- Citizen name: {citizen}
+- Reference Issue ID: PM-{issue_id}
+{f'- Map link: {maps_link}' if maps_link else ''}
+
+Draft the email body now."""
+
+            completion = client.chat.completions.create(
+                model="meta-llama/Llama-3.1-8B-Instruct:featherless-ai",
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                max_tokens=400,
+                temperature=0.3,
+                stop=["[USER]", "[ASSISTANT]", "[INST]"],
+            )
+            body = (completion.choices[0].message.content or '').strip()
+            # Cleanup
+            for token in ['[INST]', '[/INST]', '[USER]', '[ASSISTANT]', '<|im_end|>']:
+                body = body.replace(token, '')
+            body = body.strip()
+            if len(body) < 50:
+                raise ValueError("LLM body too short")
+            print(f"[draft_dispatch] LLM SUCCESS, length: {len(body)}")
+            llm_used = True
+        except Exception as e:
+            print(f"[draft_dispatch] LLM failed: {e} — using template")
+            body = _template_dispatch_body(citizen, agency, tag, severity, location_str,
+                                            date_str, description, issue_id, maps_link)
+            llm_used = False
+    else:
+        body = _template_dispatch_body(citizen, agency, tag, severity, location_str,
+                                        date_str, description, issue_id, maps_link)
+        llm_used = False
+
+    subject = f"Civic Complaint: {tag} reported at {area} (Ref: PM-{issue_id})"
+
+    return {
+        'recipient_name':  agency.get('name'),
+        'recipient_email': agency.get('email', ''),
+        'recipient_phone': agency.get('phone', ''),
+        'agency':          agency,
+        'subject':         subject,
+        'body':            body,
+        'llm_drafted':     llm_used,
+        'maps_link':       maps_link,
+    }
+
+
+def _template_dispatch_body(citizen, agency, tag, severity, location_str,
+                             date_str, description, issue_id, maps_link):
+    """Deterministic template used when LLM is unavailable."""
+    lines = [
+        f"Dear {agency.get('name', 'Concerned Authority')},",
+        "",
+        f"I am writing to formally report a {tag.lower()} issue in our area that "
+        f"requires your urgent attention.",
+        "",
+        f"Details of the complaint:",
+        f"  • Type:        {tag}",
+        f"  • Severity:    {severity}",
+        f"  • Location:    {location_str}",
+        f"  • Reported on: {date_str}",
+        f"  • Reference:   PM-{issue_id}",
+        "",
+        f"Description from citizens at the location:",
+        f"\"{description}\"",
+        "",
+    ]
+    if maps_link:
+        lines.append(f"Exact location on map: {maps_link}")
+        lines.append("")
+    lines.extend([
+        f"This issue has been reported through Problem Map, Delhi's citizen-led "
+        f"civic-reporting platform. We respectfully request that the appropriate "
+        f"team be assigned to inspect and resolve this matter at the earliest.",
+        "",
+        f"We would appreciate an acknowledgement and an estimated resolution timeline.",
+        "",
+        f"Thank you for your prompt attention to this matter.",
+        "",
+        f"Sincerely,",
+        f"{citizen}",
+        f"(via Problem Map — problem-map.onrender.com)",
+    ])
+    return '\n'.join(lines)

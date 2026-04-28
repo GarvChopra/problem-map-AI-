@@ -363,6 +363,12 @@
           </div>
           <img id="r-preview" class="image-preview"/>
         </div>
+        <!-- AI Vision button -->
+        <button type="button" id="ai-analyze-btn" onclick="aiAnalyzeImage()" style="display:none; margin-top:8px; width:100%; padding:9px; background:linear-gradient(135deg, #C84B31, #1B4F72); color:white; border:none; border-radius:8px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/></svg>
+          <span id="ai-analyze-label">Analyze photo with AI</span>
+        </button>
+        <div id="ai-analyze-result" style="display:none; margin-top:8px; padding:10px 12px; border-radius:8px; background:rgba(45,106,79,0.08); border:1px solid rgba(45,106,79,0.25); font-size:12.5px; line-height:1.5;"></div>
       </div>
     </div>
     <input type="hidden" id="r-lat"/>
@@ -692,8 +698,84 @@ function previewImage(input) {
     const img = document.getElementById('r-preview');
     img.src = e.target.result; img.style.display = 'block';
     document.getElementById('upload-placeholder').style.display = 'none';
+    // Show AI analyze button
+    const btn = document.getElementById('ai-analyze-btn');
+    if (btn) btn.style.display = 'flex';
+    // Reset previous AI result if any
+    const res = document.getElementById('ai-analyze-result');
+    if (res) res.style.display = 'none';
   };
   reader.readAsDataURL(file);
+}
+
+async function aiAnalyzeImage() {
+  const file = document.getElementById('r-image').files[0];
+  if (!file) { showToast('Please select a photo first'); return; }
+
+  const btn   = document.getElementById('ai-analyze-btn');
+  const label = document.getElementById('ai-analyze-label');
+  const res   = document.getElementById('ai-analyze-result');
+  btn.disabled = true;
+  label.textContent = 'Analyzing photo…';
+
+  // Read file as base64
+  const b64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve(r.result.split(',')[1]);
+    r.onerror = () => reject(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+
+  try {
+    const r = await fetch('/ai/analyze-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: b64, mime_type: file.type || 'image/jpeg' }),
+    });
+    const d = await r.json();
+
+    if (d.error) {
+      res.style.display = 'block';
+      res.style.background = 'rgba(200,75,49,0.08)';
+      res.style.borderColor = 'rgba(200,75,49,0.3)';
+      res.innerHTML = `⚠️ <b>AI couldn't analyze the photo:</b> ${d.error}`;
+      label.textContent = 'Try again';
+      btn.disabled = false;
+      return;
+    }
+
+    // Auto-fill the form
+    document.getElementById('r-desc').value = d.description || '';
+    document.getElementById('r-severity').value = d.severity || 'medium';
+    // Update severity button highlights
+    document.querySelectorAll('.severity-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.sev === d.severity);
+    });
+
+    // Show success card
+    const tagLabel = (TAG_LABELS[d.category] || d.category || 'Other');
+    const sevColor = d.severity === 'high' ? '#C84B31' : d.severity === 'low' ? '#2D6A4F' : '#B7770D';
+    res.style.display = 'block';
+    res.style.background = 'rgba(45,106,79,0.08)';
+    res.style.borderColor = 'rgba(45,106,79,0.25)';
+    res.innerHTML = `
+      <div style="font-weight:600; margin-bottom:6px; color:#2D6A4F">✓ AI analysis complete (${d.confidence}% confidence)</div>
+      <div><b>Category:</b> ${tagLabel}</div>
+      <div><b>Severity:</b> <span style="color:${sevColor}; font-weight:600">${(d.severity||'medium').toUpperCase()}</span></div>
+      <div style="margin-top:6px; font-style:italic; color:var(--text2)">"${d.description}"</div>
+      <div style="margin-top:6px; font-size:11px; color:var(--text3)">via ${d.source} vision · You can edit before submitting</div>
+    `;
+    label.textContent = 'Re-analyze';
+    btn.disabled = false;
+    showToast('Form auto-filled by AI ✨');
+  } catch (e) {
+    res.style.display = 'block';
+    res.style.background = 'rgba(200,75,49,0.08)';
+    res.style.borderColor = 'rgba(200,75,49,0.3)';
+    res.innerHTML = `⚠️ Network error: ${e.message}`;
+    label.textContent = 'Try again';
+    btn.disabled = false;
+  }
 }
 
 async function submitReport() {

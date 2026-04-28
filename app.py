@@ -512,6 +512,66 @@ def ai_spam_reports():
     })
 
 
+@app.route('/ai/analyze-image', methods=['POST'])
+def ai_analyze_image():
+    """Analyze a civic-issue photo with Vision AI.
+    Accepts JSON {image: 'base64...'} or multipart with 'image' file.
+    Returns AI's category/severity/description suggestions."""
+    try:
+        if request.content_type and 'multipart' in request.content_type:
+            f = request.files.get('image')
+            if not f or not f.filename:
+                return jsonify({'error': 'No image uploaded'}), 400
+            img_bytes = f.read()
+            mime = f.content_type or 'image/jpeg'
+            image_b64 = base64.b64encode(img_bytes).decode()
+        else:
+            d = request.json or {}
+            image_b64 = d.get('image', '')
+            mime = d.get('mime_type', 'image/jpeg')
+            # If it's a data URL, strip prefix
+            if image_b64.startswith('data:'):
+                header, _, image_b64 = image_b64.partition(',')
+                if 'image/' in header:
+                    mime = header.split(';')[0].replace('data:', '')
+
+            if not image_b64:
+                return jsonify({'error': 'No image data provided'}), 400
+
+        result = ai_engine.analyze_image(image_b64, mime_type=mime)
+        return jsonify(result)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'error': f'Server error: {e}'}), 500
+
+
+@app.route('/ai/draft-dispatch/<int:issue_id>', methods=['POST'])
+def ai_draft_dispatch(issue_id):
+    """Generate a formal complaint email for an issue → relevant govt agency."""
+    try:
+        # Find the issue
+        all_issues = get_issues()
+        issue = next((i for i in all_issues if i.get('id') == issue_id), None)
+        if not issue:
+            return jsonify({'error': 'Issue not found'}), 404
+
+        # Pick the right authority
+        agencies = get_gov_agencies()
+        agency = ai_engine.find_authority_for_issue(issue, agencies)
+        if not agency:
+            return jsonify({'error': 'No matching authority found'}), 404
+
+        d = request.json or {}
+        citizen = d.get('citizen') or session.get('user') or issue.get('user')
+        draft = ai_engine.draft_dispatch(issue, agency, citizen_name=citizen)
+        if not draft:
+            return jsonify({'error': 'Could not draft email'}), 500
+        return jsonify(draft)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({'error': f'Server error: {e}'}), 500
+
+
 @app.route('/ai/health')
 def ai_health():
     return jsonify({'status': 'ok', 'engine': 'AreaPulse Civic AI v1.0'})
