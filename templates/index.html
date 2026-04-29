@@ -36,7 +36,6 @@
     border-right-color: transparent;
   }
 
-  /* Fixed-width inner — content doesn't squish during transition */
   .sidebar-inner {
     width: 340px;
     flex-shrink: 0;
@@ -46,8 +45,6 @@
     overflow: hidden;
   }
 
-  /* Toggle tab — lives in .home-body via position:absolute, NOT inside .sidebar
-     so sidebar's overflow:hidden cannot clip it */
   .sidebar-toggle {
     position: absolute;
     top: 50%;
@@ -79,7 +76,6 @@
   .sidebar-toggle.collapsed-tab { left: 0; }
   .sidebar-toggle.collapsed-tab .toggle-arrow { transform: rotate(180deg); }
 
-  /* ── Pulse ring — shown on sidebar card click ── */
   @keyframes pulse-ring {
     0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.9; }
     70%  { transform: translate(-50%, -50%) scale(2.8); opacity: 0.15; }
@@ -144,6 +140,7 @@
     transition: all 0.15s;
   }
   .upvote-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .upvote-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(200,75,49,0.08); }
 
   /* ── MAP ──────────────────────────────────── */
   .map-container { flex: 1; position: relative; min-width: 0; }
@@ -182,9 +179,14 @@
     border: 2px dashed var(--border); border-radius: 8px;
     padding: 20px; text-align: center; cursor: pointer;
     transition: border-color 0.15s; position: relative;
+    overflow: hidden;
   }
   .image-upload-zone:hover { border-color: var(--accent); }
-  .image-upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  /* FIX: input covers full zone, no onclick needed on div */
+  .image-upload-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    width: 100%; height: 100%; z-index: 2;
+  }
   .image-preview { max-width: 100%; max-height: 150px; border-radius: 8px; margin-top: 10px; display: none; }
   .severity-btns { display: flex; gap: 8px; }
   .sev-btn {
@@ -229,14 +231,12 @@
   <!-- ══ MAIN BODY ══ -->
   <div class="home-body">
 
-    <!-- Sidebar collapse toggle — outside sidebar so overflow:hidden doesn't clip it -->
     <div class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
       <span class="toggle-arrow">‹</span>
     </div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar" id="main-sidebar">
-
       <div class="sidebar-inner">
         <div class="sidebar-header">
           <div class="sidebar-title">Delhi Issues</div>
@@ -285,13 +285,12 @@
             <div>Loading issues…</div>
           </div>
         </div>
-      </div><!-- end .sidebar-inner -->
+      </div>
     </aside>
 
     <!-- MAP -->
     <div class="map-container">
 
-      <!-- Collapsed NGO pill -->
       <div class="ngo-collapsed-pill" id="ngo-collapsed-pill" onclick="expandNGOStrip()">
         <div class="ngo-live-dot"></div>
         <span id="ngo-pill-text">NGOs nearby</span>
@@ -316,8 +315,8 @@
       </div>
     </div>
 
-  </div><!-- end .home-body -->
-</div><!-- end .home-layout -->
+  </div>
+</div>
 
 <!-- ── REPORT MODAL ───────────────────────────── -->
 <div class="modal-overlay" id="report-modal">
@@ -355,7 +354,8 @@
       </div>
       <div class="form-group span-2">
         <label>Photo (optional)</label>
-        <div class="image-upload-zone" onclick="document.getElementById('r-image').click()">
+        <!-- FIX: removed onclick on div — input covers full area via position:absolute -->
+        <div class="image-upload-zone">
           <input type="file" id="r-image" accept="image/*" onchange="previewImage(this)"/>
           <div id="upload-placeholder">
             <div style="font-size:13px; color:var(--text2)">Click to upload a photo</div>
@@ -363,8 +363,7 @@
           </div>
           <img id="r-preview" class="image-preview"/>
         </div>
-        <!-- AI Vision button -->
-        <button type="button" id="ai-analyze-btn" onclick="aiAnalyzeImage()" style="display:none; margin-top:8px; width:100%; padding:9px; background:linear-gradient(135deg, #C84B31, #1B4F72); color:white; border:none; border-radius:8px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+        <button type="button" id="ai-analyze-btn" style="display:none; margin-top:8px; width:100%; padding:9px; background:linear-gradient(135deg, #C84B31, #1B4F72); color:white; border:none; border-radius:8px; font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; display:none; align-items:center; justify-content:center; gap:6px;" onclick="aiAnalyzeImage()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/></svg>
           <span id="ai-analyze-label">Analyze photo with AI</span>
         </button>
@@ -394,7 +393,7 @@ const CURRENT_USER = "{{ current_user or '' }}";
 
 // ── MAP INIT ───────────────────────────────
 const map = L.map('map', { zoomControl: false }).setView([28.6139, 77.2090], 11);
-    window.map = map;  // expose for AreaPulse AI
+window.map = map;
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap © CARTO', maxZoom: 19
 }).addTo(map);
@@ -426,11 +425,9 @@ function panToIssue(id) {
   map.setView([issue.lat, issue.lng], 15, { animate: true });
   loadNGOsForIssue(issue);
 
-  // Remove any existing pulse rings
   activePulseRings.forEach(r => r.remove());
   activePulseRings = [];
 
-  // Fire 3 pulse rings in sequence — staggered 350ms apart
   [0, 350, 700].forEach(delay => {
     setTimeout(() => {
       const point = map.latLngToContainerPoint([issue.lat, issue.lng]);
@@ -441,12 +438,10 @@ function panToIssue(id) {
       ring.style.top  = point.y + 'px';
       mapEl.appendChild(ring);
       activePulseRings.push(ring);
-      // Clean up after animation finishes
       setTimeout(() => { ring.remove(); }, 1200);
     }, delay);
   });
 
-  // Re-fire rings once pan animation lands (~600ms)
   setTimeout(() => {
     [0, 350].forEach(delay => {
       setTimeout(() => {
@@ -526,7 +521,7 @@ function renderSidebar(issues) {
   `).join('');
 }
 
-// ── MAP MARKERS (issue pins — no popup) ────
+// ── MAP MARKERS ────────────────────────────
 const TAG_COLORS = {
   pothole:'#A04000', water:'#1A5276', garbage:'#1D6A39', streetlight:'#5D6D7E',
   traffic:'#922B21', noise:'#7D3C98', sewage:'#9A7D0A', electricity:'#935116',
@@ -698,10 +693,8 @@ function previewImage(input) {
     const img = document.getElementById('r-preview');
     img.src = e.target.result; img.style.display = 'block';
     document.getElementById('upload-placeholder').style.display = 'none';
-    // Show AI analyze button
     const btn = document.getElementById('ai-analyze-btn');
     if (btn) btn.style.display = 'flex';
-    // Reset previous AI result if any
     const res = document.getElementById('ai-analyze-result');
     if (res) res.style.display = 'none';
   };
@@ -718,7 +711,6 @@ async function aiAnalyzeImage() {
   btn.disabled = true;
   label.textContent = 'Analyzing photo…';
 
-  // Read file as base64
   const b64 = await new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload  = () => resolve(r.result.split(',')[1]);
@@ -744,15 +736,12 @@ async function aiAnalyzeImage() {
       return;
     }
 
-    // Auto-fill the form
     document.getElementById('r-desc').value = d.description || '';
     document.getElementById('r-severity').value = d.severity || 'medium';
-    // Update severity button highlights
     document.querySelectorAll('.severity-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.sev === d.severity);
     });
 
-    // Show success card
     const tagLabel = (TAG_LABELS[d.category] || d.category || 'Other');
     const sevColor = d.severity === 'high' ? '#C84B31' : d.severity === 'low' ? '#2D6A4F' : '#B7770D';
     res.style.display = 'block';
@@ -770,8 +759,6 @@ async function aiAnalyzeImage() {
     showToast('Form auto-filled by AI ✨');
   } catch (e) {
     res.style.display = 'block';
-    res.style.background = 'rgba(200,75,49,0.08)';
-    res.style.borderColor = 'rgba(200,75,49,0.3)';
     res.innerHTML = `⚠️ Network error: ${e.message}`;
     label.textContent = 'Try again';
     btn.disabled = false;
@@ -865,9 +852,14 @@ async function upvoteDetail(id) {
     body: JSON.stringify({ user: CURRENT_USER || 'anonymous' })
   });
   const d = await resp.json();
-  if (d.status === 'ok') { showToast('+2 pts for upvoting'); loadIssues(); closeModal('detail-modal'); }
+  if (d.status === 'ok') {
+    showToast(d.action === 'added' ? '+2 pts' : 'Upvote removed');
+    loadIssues();
+    closeModal('detail-modal');
+  }
 }
 
+// ── UPVOTE TOGGLE (FIX: was infinite, now toggles) ────
 async function upvote(id, btn) {
   const resp = await fetch(`/upvote/${id}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -875,9 +867,17 @@ async function upvote(id, btn) {
   });
   const d = await resp.json();
   if (d.status === 'ok') {
-    showToast('+2 pts');
     const span = btn.querySelector('span');
-    if (span) span.textContent = parseInt(span.textContent || 0) + 1;
+    const count = parseInt(span.textContent || 0);
+    if (d.action === 'added') {
+      span.textContent = count + 1;
+      btn.classList.add('active');
+      showToast('+2 pts');
+    } else {
+      span.textContent = Math.max(count - 1, 0);
+      btn.classList.remove('active');
+      showToast('Upvote removed');
+    }
   }
 }
 

@@ -11,7 +11,7 @@
     overflow-y: auto;
   }
   .issues-main { flex: 1; overflow-y: auto; padding: 24px; }
-  .issues-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+  .issues-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 
   .filter-group { margin-bottom: 20px; }
   .filter-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin-bottom: 8px; }
@@ -24,14 +24,22 @@
   .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
   .chip:hover:not(.active) { background: var(--surface2); }
 
+  /* FIX: cards have consistent compact height — no blank space */
   .issue-full-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px; transition: all 0.15s; cursor: pointer;
+    padding: 14px; transition: all 0.15s; cursor: pointer;
+    display: flex; flex-direction: column; gap: 6px;
   }
   .issue-full-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-  .issue-full-card-img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin-bottom: 12px; }
-  .issue-desc { font-size: 13.5px; line-height: 1.5; margin: 10px 0; }
-  .issue-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+
+  /* Image only shows when present — no placeholder gap */
+  .issue-full-card-img {
+    width: 100%; height: 130px; object-fit: cover;
+    border-radius: 6px; display: block; margin-bottom: 4px;
+  }
+
+  .issue-desc { font-size: 13px; line-height: 1.5; margin: 2px 0; }
+  .issue-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 
   .status-bar {
     display: flex; gap: 6px; margin-bottom: 20px;
@@ -45,7 +53,7 @@
   .search-wrap input { padding-left: 34px; }
   .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text3); pointer-events: none; }
 
-  .card-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .card-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .card-btn {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
@@ -187,14 +195,11 @@ function loadIssues() {
   fetch(url).then(r=>r.json()).then(issues => {
     allIssues = issues;
 
-    // Client-side sev filter
     let filtered = activeSev ? issues.filter(i=>(i.severity||'medium')===activeSev) : issues;
 
-    // Client-side status filter for escalated/verified (now stored as booleans)
     if (activeStatus === 'escalated') filtered = filtered.filter(i => i.is_escalated);
     if (activeStatus === 'verified')  filtered = filtered.filter(i => i.is_verified);
 
-    // Sort
     const sort = document.getElementById('sort-by').value;
     if (sort === 'upvotes') filtered.sort((a,b)=>(b.upvotes||0)-(a.upvotes||0));
     else if (sort === 'priority') filtered.sort((a,b)=>(b.priority||0)-(a.priority||0));
@@ -209,8 +214,8 @@ function loadIssues() {
 }
 
 function renderStatusBar(issues) {
-  const open     = issues.filter(i => (i.status||'open') === 'open').length;
-  const resolved = issues.filter(i => i.status === 'resolved').length;
+  const open      = issues.filter(i => (i.status||'open') === 'open').length;
+  const resolved  = issues.filter(i => i.status === 'resolved').length;
   const escalated = issues.filter(i => i.is_escalated).length;
   const verified  = issues.filter(i => i.is_verified).length;
   const colors = { open:'var(--blue)', resolved:'var(--green)', escalated:'var(--amber)', verified:'var(--text2)' };
@@ -227,23 +232,26 @@ function renderGrid(issues) {
     return;
   }
   grid.innerHTML = issues.map(issue => {
-    // P-004: status badge only shows open/resolved
     const baseStatus = (issue.status === 'resolved') ? 'resolved' : 'open';
     const statusBadge    = `<span class="badge badge-${baseStatus}">${baseStatus}</span>`;
-    // P-004: independent badges for verified and escalated
     const verifiedBadge  = issue.is_verified  ? `<span class="badge badge-verified">✓ Verified</span>`   : '';
     const escalatedBadge = issue.is_escalated ? `<span class="badge badge-escalated">↑ Escalated</span>` : '';
     const sevBadge = issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : '';
 
+    // FIX: only render image tag if image exists — no blank placeholder
+    const imgHTML = issue.image
+      ? `<img src="${issue.image}" class="issue-full-card-img" loading="lazy"/>`
+      : '';
+
     return `
     <div class="issue-full-card" onclick="openDetail(${issue.id})">
-      ${issue.image ? `<img src="${issue.image}" class="issue-full-card-img" loading="lazy"/>` : ''}
-      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px">
+      ${imgHTML}
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
         <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
         ${statusBadge} ${verifiedBadge} ${escalatedBadge} ${sevBadge}
       </div>
       <div class="issue-desc">${escHtml(truncate(issue.description, 100))}</div>
-      <div style="font-size:12px; color:var(--text2); margin-bottom:2px">📍 ${escHtml(issue.area)}</div>
+      <div style="font-size:12px; color:var(--text2)">📍 ${escHtml(issue.area)}</div>
       <div style="font-size:11.5px; color:var(--text3);">${timeAgo(issue.timestamp)} · by ${escHtml(issue.user||'anon')}</div>
       <div class="card-actions" onclick="event.stopPropagation()">
         <button class="card-btn ${(issue.user_actions||[]).includes('upvote') ? 'card-btn-active-upvote' : ''}" onclick="quickUpvote(${issue.id}, this)">▲ <span>${issue.upvotes||0}</span></button>
@@ -268,7 +276,7 @@ async function quickUpvote(id, btn) {
     } else {
       span.textContent = Math.max(count - 1, 0);
       btn.classList.remove('card-btn-active-upvote');
-      showToast('-2 pts · upvote removed');
+      showToast('Upvote removed');
     }
   }
 }
@@ -343,7 +351,10 @@ function openDetail(id) {
 async function upvoteDetail(id) {
   const r = await fetch(`/upvote/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user:CURRENT_USER||'anonymous'})});
   const d = await r.json();
-  if (d.status==='ok') { showToast('+2 pts'); loadIssues(); closeModal('detail-modal'); }
+  if (d.status==='ok') {
+    showToast(d.action === 'added' ? '+2 pts' : 'Upvote removed');
+    loadIssues(); closeModal('detail-modal');
+  }
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -365,12 +376,10 @@ async function emailToAuthority(id) {
     modal.id = 'dispatch-modal';
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal-content" style="max-width:680px; width:95%; max-height:90vh; overflow-y:auto">
-        <div class="modal-header">
-          <h3 style="font-family:'DM Serif Display',serif">📧 Authority Dispatch</h3>
-          <button class="modal-close" onclick="document.getElementById('dispatch-modal').classList.remove('open')">×</button>
-        </div>
-        <div id="dispatch-body" style="padding:20px"></div>
+      <div class="modal-content" style="max-width:680px; width:95%; max-height:90vh; overflow-y:auto; background:var(--surface); border-radius:14px; padding:24px; position:relative;">
+        <h3 style="font-family:'DM Serif Display',serif; margin-bottom:16px;">📧 Authority Dispatch</h3>
+        <button style="position:absolute;top:14px;right:14px;background:var(--surface2);border:none;cursor:pointer;width:28px;height:28px;border-radius:50%;font-size:16px;color:var(--text2);" onclick="document.getElementById('dispatch-modal').classList.remove('open')">×</button>
+        <div id="dispatch-body"></div>
       </div>`;
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
@@ -395,13 +404,9 @@ async function emailToAuthority(id) {
       ? '<span style="background:rgba(45,106,79,0.12); color:#2D6A4F; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">✨ AI-DRAFTED</span>'
       : '<span style="background:rgba(183,119,13,0.12); color:#B7770D; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600">📋 TEMPLATE</span>';
 
-    const mapsLink = d.maps_link
-      ? `<a href="${d.maps_link}" target="_blank" style="color:#1B4F72; font-size:12px">📍 View on map</a>`
-      : '';
-
     const recipientLine = d.recipient_email
       ? `<a href="mailto:${d.recipient_email}" style="color:#1B4F72">${d.recipient_email}</a>`
-      : '<span class="text-muted">No email on file — call or visit website</span>';
+      : '<span class="text-muted">No email on file</span>';
 
     body.innerHTML = `
       <div style="margin-bottom:16px">${llmBadge}</div>
@@ -410,26 +415,18 @@ async function emailToAuthority(id) {
         <div style="font-weight:600; font-size:14px; margin-bottom:4px">${escHtml(d.recipient_name)}</div>
         <div style="font-size:13px; color:var(--text2)">${recipientLine}</div>
         ${d.recipient_phone ? `<div style="font-size:13px; color:var(--text2); margin-top:2px">📞 <a href="tel:${d.recipient_phone}" style="color:#1B4F72">${escHtml(d.recipient_phone)}</a></div>` : ''}
-        ${mapsLink ? `<div style="margin-top:6px">${mapsLink}</div>` : ''}
       </div>
       <div style="margin-bottom:14px">
         <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Subject</label>
-        <input id="dispatch-subject" type="text" value="${escHtml(d.subject)}" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px"/>
+        <input id="dispatch-subject" type="text" value="${escHtml(d.subject)}" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; background:var(--surface); color:var(--text)"/>
       </div>
       <div style="margin-bottom:16px">
         <label style="font-size:12px; color:var(--text2); margin-bottom:4px; display:block">Email body</label>
-        <textarea id="dispatch-body-text" rows="14" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; line-height:1.55; resize:vertical">${escHtml(d.body)}</textarea>
+        <textarea id="dispatch-body-text" rows="14" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13px; line-height:1.55; resize:vertical; background:var(--surface); color:var(--text)">${escHtml(d.body)}</textarea>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn btn-primary" style="flex:1; min-width:140px; justify-content:center" onclick="sendDispatchEmail('${escapeJsAttr(d.recipient_email)}')">
-          📧 Open in Email App
-        </button>
-        <button class="btn btn-outline" style="min-width:120px; justify-content:center" onclick="copyDispatch()">
-          📋 Copy
-        </button>
-      </div>
-      <div style="margin-top:14px; padding:10px 12px; background:rgba(27,79,114,0.06); border-radius:8px; font-size:11.5px; color:var(--text2); line-height:1.5">
-        💡 <b>How this works:</b> Click "Open in Email App" to launch your email client pre-filled with this complaint. Or copy the text and paste into any tool.
+        <button class="btn btn-primary" style="flex:1; min-width:140px; justify-content:center" onclick="sendDispatchEmail('${escapeJsAttr(d.recipient_email)}')">📧 Open in Email App</button>
+        <button class="btn btn-outline" style="min-width:120px; justify-content:center" onclick="copyDispatch()">📋 Copy</button>
       </div>
     `;
   } catch (e) {
@@ -442,20 +439,16 @@ function escapeJsAttr(s) { return String(s||'').replace(/'/g, "&#39;"); }
 function sendDispatchEmail(recipient) {
   const subject = document.getElementById('dispatch-subject').value;
   const body    = document.getElementById('dispatch-body-text').value;
-  const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  window.location.href = url;
+  window.location.href = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   setTimeout(() => showToast('Email app opened. Review and hit send!'), 300);
 }
 
 function copyDispatch() {
   const subject = document.getElementById('dispatch-subject').value;
   const body    = document.getElementById('dispatch-body-text').value;
-  const text = `Subject: ${subject}\n\n${body}`;
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Email copied to clipboard ✓');
-  }).catch(() => {
-    showToast('Could not copy — please select and copy manually');
-  });
+  navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    .then(() => showToast('Email copied to clipboard ✓'))
+    .catch(() => showToast('Could not copy — please select and copy manually'));
 }
 
 loadIssues();

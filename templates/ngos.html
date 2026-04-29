@@ -54,6 +54,17 @@
     font-size: 11.5px; color: var(--green); font-weight: 500;
   }
 
+  /* FIX: contact buttons — solid styling so they're clearly clickable */
+  .ngo-contact-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); text-decoration: none; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ngo-contact-btn:hover { background: var(--accent); color: white; border-color: var(--accent); text-decoration: none; }
+  .ngo-contact-btn.call:hover { background: var(--green); border-color: var(--green); }
+
   /* Map panel */
   .ngos-map { flex: 1; position: relative; }
   #ngo-map { width: 100%; height: 100%; }
@@ -122,7 +133,7 @@ let userLat = 28.6139, userLng = 77.2090;
 let ngoMarkers = [];
 
 const ngoMap = L.map('ngo-map', { zoomControl: false }).setView([28.6139, 77.2090], 11);
-window.ngoMap = ngoMap;  // expose for AreaPulse AI
+window.ngoMap = ngoMap;
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap © CARTO', maxZoom: 19
 }).addTo(ngoMap);
@@ -191,6 +202,18 @@ function stars(rating) {
   return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - half);
 }
 
+// FIX: contact buttons use ngo-contact-btn class with proper href handling
+function makeContactBtns(ngo) {
+  let btns = '';
+  if (ngo.phone) {
+    btns += `<a href="tel:${escHtml(ngo.phone)}" class="ngo-contact-btn call" onclick="event.stopPropagation()">📞 ${escHtml(ngo.phone)}</a>`;
+  }
+  if (ngo.email) {
+    btns += `<a href="mailto:${escHtml(ngo.email)}" class="ngo-contact-btn" onclick="event.stopPropagation()">✉ Email</a>`;
+  }
+  return btns;
+}
+
 function renderNGOs(ngos, showDist=false, showRank=false) {
   const el = document.getElementById('ngos-content');
   if (!ngos.length) {
@@ -221,9 +244,8 @@ function renderNGOs(ngos, showDist=false, showRank=false) {
         <div class="ngo-stat"><div class="ngo-stat-num" style="color:var(--amber)">${ngo.issues_escalated||0}</div><div class="ngo-stat-lbl">Escalated</div></div>
         <div class="ngo-stat"><div class="ngo-stat-num" style="color:var(--blue)">${(ngo.rating||4).toFixed(1)}</div><div class="ngo-stat-lbl">Rating</div></div>
       </div>
-      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
-        ${ngo.phone ? `<a href="tel:${ngo.phone}" class="btn btn-outline btn-sm" onclick="event.stopPropagation()">Call</a>` : ''}
-        ${ngo.email ? `<a href="mailto:${ngo.email}" class="btn btn-outline btn-sm" onclick="event.stopPropagation()">Email</a>` : ''}
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        ${makeContactBtns(ngo)}
         <span style="font-size:12px; color:var(--text2); display:flex; align-items:center">📍 ${escHtml(ngo.area||'')}</span>
       </div>
     </div>`;
@@ -250,8 +272,7 @@ function renderGovt(agencies) {
         </div>
       </div>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-        ${a.phone ? `<a href="tel:${a.phone}" class="btn btn-outline btn-sm" onclick="event.stopPropagation()">📞 ${escHtml(a.phone)}</a>` : ''}
-        ${a.email ? `<a href="mailto:${a.email}" class="btn btn-outline btn-sm" onclick="event.stopPropagation()">✉ Email</a>` : ''}
+        ${makeContactBtns(a)}
       </div>
     </div>
   `).join('');
