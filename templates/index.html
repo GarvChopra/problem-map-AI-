@@ -806,6 +806,11 @@ async function submitReport() {
           `${data.nearby_ngos.length} NGO${data.nearby_ngos.length !== 1 ? 's' : ''} matched for "${data.tag}" issues`
         );
       }
+      // Open the rich area dashboard if AI returned one
+      if (data.area_dashboard && data.area_dashboard.type === 'dashboard'
+          && typeof window.openAreaDashboard === 'function') {
+        setTimeout(() => window.openAreaDashboard(data.area_dashboard), 500);
+      }
     } else {
       showToast(data.error || 'Error submitting report');
     }

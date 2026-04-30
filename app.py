@@ -229,16 +229,30 @@ def report():
             # Still allow the report through but mark it; admins can clean later
 
         tag = auto_tag(desc)
-        insert_issue(area, desc, tag, user, lat, lng, image_data, severity, landmark, contact)
+        new_id = insert_issue(area, desc, tag, user, lat, lng, image_data, severity, landmark, contact)
         add_points(user, 10)
         nearby = get_nearby_ngos(lat or 28.6139, lng or 77.2090, tag=tag, limit=5) if lat else []
+
+        # Build area dashboard so the frontend can show the rich modal post-submit
+        area_dashboard = None
+        try:
+            fresh_issues = get_issues()
+            area_dashboard = ai_engine._area_dashboard_data(
+                area, fresh_issues,
+                ngo_fetcher=get_nearby_ngos,
+                after_report_id=new_id,
+            )
+        except Exception as e:
+            print(f"[/report] failed to build area dashboard: {e}")
 
         return jsonify({
             'status': 'ok',
             'tag': tag,
+            'report_id': new_id,
             'points_earned': 10,
             'nearby_ngos': nearby,
             'moderation': moderation,
+            'area_dashboard': area_dashboard,
         })
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -454,6 +468,30 @@ def ai_ask():
     user = session.get('user')
     response = ai_engine.ask_ai(query, issues_data, current_user=user)
     return jsonify(response)
+
+
+@app.route('/ai/area-dashboard')
+def ai_area_dashboard():
+    """Rich dashboard payload for a single area (cards, bars, trend, NGOs, AI insight)."""
+    area = (request.args.get('area') or '').strip()
+    if not area:
+        return jsonify({'error': 'area parameter required'}), 400
+    issues_data = get_issues()
+    payload = ai_engine._area_dashboard_data(area, issues_data, ngo_fetcher=get_nearby_ngos)
+    return jsonify(payload)
+
+
+@app.route('/ai/compare-areas')
+def ai_compare_areas():
+    """Side-by-side comparison of two areas with bars, severity, trend, NGOs, verdict."""
+    a = (request.args.get('a') or '').strip()
+    b = (request.args.get('b') or '').strip()
+    if not a or not b:
+        return jsonify({'error': 'both a and b parameters required'}), 400
+    issues_data = get_issues()
+    payload = ai_engine._compare_dashboard_data(a, b, issues_data, ngo_fetcher=get_nearby_ngos)
+    return jsonify(payload)
+
 
 
 @app.route('/ai/copilot', methods=['POST'])
