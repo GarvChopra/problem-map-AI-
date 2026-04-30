@@ -1,119 +1,102 @@
-# Problem Map + AreaPulse Civic AI
+# AreaPulse
 
-Civic issue reporting platform for Delhi with AI assistant, Firebase backend, and Gemini-powered chat.
+**AI-Powered Civic Issue Heatmap for Delhi**
 
----
+> Turning citizen complaints into actionable intelligence.
 
-## ⚡ ONE-SHOT SETUP (Recommended)
+🔗 **Live:** https://areapulse-5ag9.onrender.com/
 
-You need 2 things:
-1. Your Firebase service-account JSON → rename to `firebase_key.json` and drop in this folder
-2. A free Gemini API key → https://aistudio.google.com/app/apikey
-
-Then in PowerShell, in this folder, run:
-
-```powershell
-.\setup.ps1
-```
-
-That's it. The script creates the virtual environment, installs dependencies, asks for your Gemini key, creates `.env`, and starts the app.
-
-After that, every time you want to start the app:
-
-```powershell
-.\run.ps1
-```
-
----
-
-### If PowerShell blocks the script
-
-Run this once (PowerShell will ask before allowing):
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Type `Y` to confirm, then re-run `.\setup.ps1`.
-
----
-
-## Manual setup (if you don't want to use the script)
-
-```powershell
-python -m venv venv
-.\venv\Scripts\activate
-pip install -r requirements.txt
-Copy-Item .env.example .env
-notepad .env       # paste your Gemini key
-python app.py
-```
-
----
-
-## ✅ Verify it's working
-
-1. Open http://localhost:5000
-2. Sign in with any name
-3. Click the red AI button (bottom-right)
-4. Ask: "why is delhi so polluted"
-5. Terminal should show:
-   ```
-   [llm_chat] called | key_present=True | key_prefix=AIzaSy
-   [llm_chat] Gemini SUCCESS, response length: 280
-   ```
-
----
+Delhi citizens file thousands of civic complaints every year — potholes, garbage, broken streetlights — but they're trapped across disconnected portals with no follow-up. AreaPulse unifies them into one AI-powered platform that auto-classifies issues, filters spam, builds a live heatmap, and routes high-priority cases to the right authority.
 
 ## Features
 
-### Civic platform
-- Report civic issues with auto-tagging (pothole, water, garbage, streetlight, traffic, noise, sewage, electricity, tree)
-- Live heatmap of issues by area
-- Upvote / verify / resolve workflow
-- Community channels per area
-- NGO + government agency directory with proximity search
-- User reputation, points, leaderboard
+- **AI Vision Reporting** — Drop a photo, AI auto-fills the category, severity, and description (Groq Llama-Vision)
+- **Live Heatmap** — Real-time map of civic issues across Delhi (Leaflet + Firestore)
+- **Smart Chat Assistant** — Ask "compare Rohini vs Saket" or "show report Lajpat Nagar" and get a rich dashboard with bar charts, severity donut, 7-day trend, NGO list, and AI verdict
+- **NGO + Government Routing** — 16 seeded NGOs and 12 government agencies; AI drafts formal complaint emails
+- **Verification & Escalation** — 4-step status timeline (Open → Verified → Escalated → Resolved) with reputation points
+- **Spam Detection** — 14-rule classifier filters fake reports
+- **Community Feed** — Channel-based discussions per neighborhood
 
-### AreaPulse Civic AI (built-in)
-- **Chat tab** — ask anything in natural language (Gemini-powered)
-- **Insights tab** — auto-generated cards: hot zones, trends, top categories
-- **Report Copilot** — paste a draft, get suggested category + severity + improved wording
-- **Spam detection** — every report screened with confidence score
-- **Live moderation** — banner under the description as you type
-- **Map intelligence** — "show me potholes" plots filtered markers on the map
+## Tech Stack
 
-Smart routing: structured queries (maps, tables, area lookups) run **locally** with zero API cost. Only free-form chat ("why is...", "how do we...", "explain...") hits Gemini. Plus a 10-min response cache and a 12-req/min rate-limit guard so you stay well within the free tier.
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
+| Layer | Tech |
 |---|---|
-| `firebase_key.json` not found | Drop your Firebase service-account JSON in this folder, named exactly `firebase_key.json` |
-| Quota / 429 error | Wait 60 seconds — Gemini free tier is 15/min |
-| `key_present=False` in terminal | `.env` not loading. Verify it's named exactly `.env` (Windows hides extensions — show them!) and contains `GEMINI_API_KEY=AIzaSy...` |
-| Port 5000 in use | Edit last line of `app.py`, change `port=5000` to `port=8000` |
-| AI button missing | Hard-refresh browser: `Ctrl+Shift+R` |
-| Anything else | Check the terminal — error messages there tell you exactly what's wrong |
+| **Backend** | Python 3.11 · Flask · Gunicorn |
+| **Frontend** | Vanilla JS · Leaflet.js · CSS variables (light/dark mode) |
+| **Database** | Firebase Firestore (9 collections, real-time sync) |
+| **AI** | Groq Llama-4-Scout (Vision) · HF Llama-3.1 (Chat) · Custom NLP classifier |
+| **Hosting** | Render.com |
+
+## Quick Start
+
+```bash
+# 1. Clone
+git clone https://github.com/<your-username>/areapulse.git
+cd areapulse
+
+# 2. Setup
+python -m venv venv
+.\venv\Scripts\Activate.ps1     # Windows
+# source venv/bin/activate      # macOS/Linux
+pip install -r requirements.txt
+
+# 3. Configure
+cp .env.example .env
+# Edit .env and set: HF_TOKEN, GROQ_API_KEY, SECRET_KEY, ADMIN_PASSWORD
+
+# 4. Add Firebase credentials
+# Place your firebase_key.json in the project root
+
+# 5. Run
+python app.py
+# Open http://localhost:5000
+```
+
+## Project Structure
+
+```
+areapulse/
+├── app.py                 # Flask routes
+├── ai_engine.py           # AI orchestration (vision, chat, spam, dashboard)
+├── database.py            # Firestore layer
+├── classifier.py          # Keyword tag classifier (9 categories)
+├── requirements.txt
+├── runtime.txt
+├── static/
+│   ├── style.css
+│   ├── ai_assistant.css
+│   └── ai_assistant.js
+└── templates/
+    ├── base.html          # Layout + AI widget
+    ├── index.html         # Home + map + report form
+    ├── issues.html        # Public issue grid
+    ├── my_issues.html     # User's reports
+    ├── community.html
+    ├── ngos.html
+    ├── reputation.html
+    └── login.html
+```
+
+## Environment Variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `HF_TOKEN` | Yes | Hugging Face API token (chat LLM) |
+| `GROQ_API_KEY` | Yes | Groq API key (Vision LLM) |
+| `SECRET_KEY` | Yes | Flask session secret |
+| `ADMIN_PASSWORD` | Yes | Gates the verify action |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Optional | Path to Firebase JSON in production |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth |
+
+## Team
+
+**Team Nexons**
+- Shashwat Shukla *(Team Lead)*
+- Garv Chopra
+
+Category: Smart Cities / Urban Governance
 
 ---
 
-## File structure
-
-```
-problem-map-FINAL/
-├── setup.ps1              ← run this once
-├── run.ps1                ← run this daily
-├── app.py                 ← Flask backend
-├── database.py            ← Firestore data layer
-├── ai_engine.py           ← AI brain (Gemini + rule-based)
-├── classifier.py          ← keyword tagger
-├── requirements.txt
-├── .env.example           ← template
-├── .env                   ← your secrets (created by setup.ps1)
-├── firebase_key.json      ← you add this
-├── static/                ← CSS + JS
-└── templates/             ← HTML pages (AI widget on every page)
-```
+> *"Let's build a smarter, more responsive Delhi — one pin at a time."*
