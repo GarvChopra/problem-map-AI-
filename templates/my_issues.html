@@ -161,7 +161,7 @@ function getStatusSteps(issue) {
   const isVerified  = !!issueObj.is_verified;
   const stepsDef = [
     { label: 'Open',      done: true },
-    { label: 'Verified',  done: isVerified  || isEscalated || isResolved },
+    { label: 'Verified',  done: isVerified  || isResolved },
     { label: 'Escalated', done: isEscalated || isResolved },
     { label: 'Resolved',  done: isResolved },
   ];

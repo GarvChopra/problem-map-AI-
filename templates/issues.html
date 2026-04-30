@@ -318,6 +318,14 @@ async function verifyIssue(id, btn) {
 }
 
 async function escalateIssue(id, btn) {
+  // Block escalation if issue isn't verified yet — show inline toast (not popup).
+  const issue = allIssues.find(i => i.id === id);
+  const isAdding = !btn.classList.contains('card-btn-active-escalate');
+  if (isAdding && issue && !issue.is_verified) {
+    showToast('Please verify this issue first before escalating it.', 4000);
+    return;
+  }
+
   const r = await fetch(`/ngo/escalate/${id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user: CURRENT_USER||'anonymous'})});
   const d = await r.json();
   if (d.status === 'ok') {
@@ -331,7 +339,11 @@ async function escalateIssue(id, btn) {
       showToast('Escalation removed');
     }
     loadIssues();
-  } else { showToast(d.error || 'Escalation failed'); }
+  } else if (d.error === 'verification_required') {
+    showToast(d.message || 'Please verify the issue before escalating it.', 4000);
+  } else {
+    showToast(d.error || 'Escalation failed');
+  }
 }
 
 function openDetail(id) {
