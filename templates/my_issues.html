@@ -11,10 +11,14 @@
   }
   .my-issue-card:hover { border-color: var(--accent); transform: translateY(-1px); }
   .my-issue-card-img { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  /* Avatar fallback when no photo uploaded — shows the reporter's initials in
+     an accent circle, matching the navbar avatar style. */
   .my-issue-img-placeholder {
-    width: 80px; height: 60px; background: var(--surface2); border-radius: 6px;
-    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    color: var(--text3); font-size: 20px;
+    width: 60px; height: 60px; flex-shrink: 0;
+    border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 600; font-size: 16px;
+    letter-spacing: 0.5px;
   }
   .my-issue-body { flex: 1; min-width: 0; }
   .my-issue-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
@@ -146,13 +150,27 @@
 <script>
 const CURRENT_USER = "{{ current_user }}";
 
-function getStatusSteps(status) {
-  const steps = ['open', 'verified', 'escalated', 'resolved'];
-  const idx = steps.indexOf(status || 'open');
-  return steps.map((s, i) => ({
-    label: s.charAt(0).toUpperCase() + s.slice(1),
-    state: i < idx ? 'done' : i === idx ? 'active' : 'pending'
-  }));
+function getStatusSteps(issue) {
+  // Read the boolean flags so the timeline reflects verifications and
+  // escalations, not just the string status field. (Verifying an issue keeps
+  // status='open' but flips is_verified=true — without this fix the timeline
+  // never advances past Open.)
+  const issueObj = (typeof issue === 'object') ? issue : { status: issue };
+  const isResolved  = (issueObj.status === 'resolved');
+  const isEscalated = !!issueObj.is_escalated;
+  const isVerified  = !!issueObj.is_verified;
+  const stepsDef = [
+    { label: 'Open',      done: true },
+    { label: 'Verified',  done: isVerified  || isEscalated || isResolved },
+    { label: 'Escalated', done: isEscalated || isResolved },
+    { label: 'Resolved',  done: isResolved },
+  ];
+  let activeAssigned = false;
+  return stepsDef.map(s => {
+    if (s.done)         return { label: s.label, state: 'done' };
+    if (!activeAssigned){ activeAssigned = true; return { label: s.label, state: 'active' }; }
+    return { label: s.label, state: 'pending' };
+  });
 }
 
 async function load() {
@@ -175,18 +193,23 @@ async function load() {
   }
 
   list.innerHTML = issues.map(issue => {
-    const steps = getStatusSteps(issue.status);
+    const steps = getStatusSteps(issue);
     const statusColors = { open:'badge-open', resolved:'badge-resolved', escalated:'badge-escalated', verified:'badge-verified' };
+    // Show verified/escalated badges so my reports reflects actions taken on Issues page
+    const verifiedBadge  = issue.is_verified  ? '<span class="badge badge-verified">✓ Verified</span>'  : '';
+    const escalatedBadge = issue.is_escalated ? '<span class="badge badge-escalated">↑ Escalated</span>' : '';
     return `
     <div class="my-issue-card" onclick="openDetail(${issue.id})">
       ${issue.image
         ? `<img class="my-issue-card-img" src="${issue.image}" loading="lazy"/>`
-        : `<div class="my-issue-img-placeholder">○</div>`}
+        : `<div class="my-issue-img-placeholder">${(issue.user || 'A').slice(0,2).toUpperCase()}</div>`}
       <div class="my-issue-body">
         <div class="my-issue-header">
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <span class="badge tag-${issue.tag||'other'}">${TAG_LABELS[issue.tag]||'Other'}</span>
             <span class="badge ${statusColors[issue.status||'open']||'badge-open'}">${issue.status||'open'}</span>
+            ${verifiedBadge}
+            ${escalatedBadge}
             ${issue.severity ? `<span class="badge badge-${issue.severity}">${issue.severity}</span>` : ''}
           </div>
           <span class="text-sm text-muted">${timeAgo(issue.timestamp)}</span>
