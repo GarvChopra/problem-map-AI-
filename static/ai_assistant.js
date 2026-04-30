@@ -34,13 +34,31 @@
     if (t.dataset.tab === 'insights' && !insightsLoaded) loadInsights();
   }));
 
-  // ── Suggested chips ──────────────────────────────────
-  document.querySelectorAll('.ai-chip').forEach(c => {
-    c.addEventListener('click', () => {
-      const q = c.dataset.q;
-      inputEl.value = q;
-      sendQuery();
-    });
+  // ── Suggested chips: replace stock chips with dashboard-aware ones ──
+  // The HTML in base.html has 6 stock chips; we swap them so users discover
+  // the new compare / dashboard features the moment they open the panel.
+  const NEW_CHIPS = [
+    { q: 'compare rohini vs saket',     label: 'Compare Rohini vs Saket' },
+    { q: 'show report rohini',          label: 'Rohini full report' },
+    { q: 'how is lajpat nagar doing',   label: 'How is Lajpat Nagar?' },
+    { q: 'compare dwarka vs hauz khas', label: 'Dwarka vs Hauz Khas' },
+    { q: 'which areas need most attention?', label: 'Top priority areas' },
+    { q: 'show me high severity issues on map', label: 'High-severity map' },
+  ];
+  const chipBox = document.querySelector('.ai-suggested');
+  if (chipBox) {
+    chipBox.innerHTML = NEW_CHIPS.map(c =>
+      `<button class="ai-chip" data-q="${c.q.replace(/"/g, '&quot;')}">${c.label}</button>`
+    ).join('');
+  }
+  // Use event delegation so dynamically-replaced chips still work
+  document.addEventListener('click', e => {
+    const chip = e.target.closest && e.target.closest('.ai-chip');
+    if (!chip) return;
+    const q = chip.dataset.q;
+    if (!q) return;
+    inputEl.value = q;
+    sendQuery();
   });
 
   // ── Send ─────────────────────────────────────────────
@@ -65,6 +83,36 @@
 
   function renderResponseHTML(resp) {
     let html = resp.message ? formatBold(escHtml(resp.message)).replace(/\n/g, '<br>') : '';
+
+    // ── NEW: dashboard type — render compact preview in chat + open big modal ──
+    if (resp.type === 'dashboard') {
+      const isCompare = resp.mode === 'compare';
+      const title = isCompare
+        ? `${resp.area_a.area} vs ${resp.area_b.area}`
+        : resp.area;
+      const sub = isCompare
+        ? `${resp.area_a.total} report${resp.area_a.total === 1 ? '' : 's'} vs ${resp.area_b.total} report${resp.area_b.total === 1 ? '' : 's'}`
+        : `${resp.total} total · ${resp.open} open · ${resp.ngo_count} NGOs nearby`;
+      // Each preview card stores its own payload via a unique key so older
+      // previews always open their own data — not whatever was queried last.
+      window.__dashPayloads = window.__dashPayloads || {};
+      const payloadKey = 'dash_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      window.__dashPayloads[payloadKey] = resp;
+      // Also remember the latest one for the auto-open below
+      window.__lastDashboardPayload = resp;
+
+      html += `
+        <div class="ai-dash-preview" onclick="window.openAreaDashboard(window.__dashPayloads['${payloadKey}'])">
+          <div class="ai-dash-preview-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+            ${escHtml(title)}
+          </div>
+          <div class="ai-dash-preview-sub">${escHtml(sub)}</div>
+          <div class="ai-dash-preview-cta">Tap to open full dashboard →</div>
+        </div>`;
+      // Auto-open the modal for the freshly-arrived payload
+      setTimeout(() => window.openAreaDashboard(resp), 250);
+    }
 
     if (resp.type === 'table' && resp.columns && resp.rows) {
       html += `<div class="ai-table-wrap"><table class="ai-table">
@@ -91,7 +139,6 @@
         }
       }
       html += `</div>`;
-      // Try to plot on map if we're on a page with a global map
       setTimeout(() => plotOnMainMap(resp.data), 200);
     }
 
@@ -354,4 +401,232 @@
       }).catch(() => {});
     }, 600);
   });
+
+  // ════════════════════════════════════════════════════════════
+  // ── AREA DASHBOARD MODAL (compare + single-area + after-report) ──
+  // ════════════════════════════════════════════════════════════
+
+  function ensureDashboardModal() {
+    let m = document.getElementById('ai-dash-modal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'ai-dash-modal';
+    m.className = 'ai-dash-modal-backdrop hidden';
+    m.innerHTML = `
+      <div class="ai-dash-modal-card" onclick="event.stopPropagation()">
+        <button class="ai-dash-close" onclick="window.closeAreaDashboard()">✕</button>
+        <div id="ai-dash-body"></div>
+      </div>`;
+    m.addEventListener('click', () => window.closeAreaDashboard());
+    document.body.appendChild(m);
+    return m;
+  }
+
+  function bar(width, color) {
+    return `<div class="ai-dash-bar"><div class="ai-dash-bar-fill" style="width:${Math.max(width, 2)}%; background:${color};"></div></div>`;
+  }
+
+  function renderTrendSVG(trend, color) {
+    const max = Math.max(...trend, 1);
+    const pts = trend.map((v, i) => {
+      const x = 10 + i * (580 / 6);
+      const y = 50 - (v / max) * 40;
+      return `${x},${y}`;
+    }).join(' ');
+    const lastX = 10 + 6 * (580 / 6);
+    const lastY = 50 - (trend[6] / max) * 40;
+    return `
+      <svg viewBox="0 0 600 60" style="width:100%; height:50px;">
+        <line x1="0" y1="50" x2="600" y2="50" stroke="#E5E5E5" stroke-width="0.5"/>
+        <polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}"/>
+        <circle cx="${lastX}" cy="${lastY}" r="3" fill="${color}"/>
+      </svg>`;
+  }
+
+  function renderSingleArea(d, opts) {
+    const accent = opts && opts.accent || '#C84B31';
+    const accentLt = opts && opts.accentLt || '#FCEBEB';
+
+    let bannerHtml = '';
+    if (d.banner) {
+      bannerHtml = `
+        <div class="ai-dash-banner ai-dash-banner-${d.banner.kind}">
+          <span class="ai-dash-banner-icon">✓</span>
+          <span>${escHtml(d.banner.message)}</span>
+        </div>`;
+    }
+
+    // Stat cards
+    const stats = `
+      <div class="ai-dash-stats">
+        <div class="ai-dash-stat"><div class="ai-dash-stat-label">Total reports</div><div class="ai-dash-stat-num" style="color:${accent}">${d.total}</div></div>
+        <div class="ai-dash-stat"><div class="ai-dash-stat-label">Open</div><div class="ai-dash-stat-num" style="color:#B7770D">${d.open}</div></div>
+        <div class="ai-dash-stat"><div class="ai-dash-stat-label">Resolved</div><div class="ai-dash-stat-num" style="color:#2D6A4F">${d.resolved}</div></div>
+        <div class="ai-dash-stat"><div class="ai-dash-stat-label">NGOs nearby</div><div class="ai-dash-stat-num" style="color:#1B4F72">${d.ngo_count}</div></div>
+      </div>`;
+
+    // Categories
+    const maxCount = Math.max(...d.categories.map(c => c.count), 1);
+    const catRows = d.categories.map(c => `
+      <div class="ai-dash-bar-row">
+        <span class="ai-dash-bar-label">${escHtml(c.label)}</span>
+        ${bar((c.count / maxCount) * 100, accent)}
+        <span class="ai-dash-bar-num" style="color:${accent}">${c.count}</span>
+      </div>`).join('');
+
+    // Severity donut (CSS conic-gradient)
+    const high = d.severity.high_pct;
+    const med  = d.severity.medium_pct;
+    const low  = 100 - high - med;
+    const conic = `conic-gradient(#C84B31 0 ${high}%, #B7770D ${high}% ${high+med}%, #2D6A4F ${high+med}% 100%)`;
+
+    // Trend
+    const trendArrow = d.change_pct > 0 ? '↑' : d.change_pct < 0 ? '↓' : '→';
+    const trendColor = d.change_pct > 0 ? accent : '#2D6A4F';
+
+    // NGOs
+    const ngoRows = d.ngos.length ? d.ngos.map(n => `
+      <div class="ai-dash-ngo-row">
+        <div>
+          <div class="ai-dash-ngo-name">${escHtml(n.name)}</div>
+          <div class="ai-dash-ngo-meta">${escHtml(n.tag)} · ${n.distance_km} km${n.resolved ? ' · ' + n.resolved + ' resolved' : ''}</div>
+        </div>
+        <div class="ai-dash-ngo-rating">${(n.rating || 4.0).toFixed(1)} ★</div>
+      </div>`).join('') : '<div class="ai-dash-empty">No NGOs found nearby</div>';
+
+    return `
+      ${bannerHtml}
+      <div class="ai-dash-header">
+        <div>
+          <div class="ai-dash-kicker">AREA SNAPSHOT</div>
+          <div class="ai-dash-title">${escHtml(d.area)}</div>
+        </div>
+      </div>
+      ${stats}
+      <div class="ai-dash-grid-2">
+        <div class="ai-dash-panel">
+          <div class="ai-dash-panel-title">REPORTS BY CATEGORY</div>
+          ${catRows || '<div class="ai-dash-empty">No data</div>'}
+        </div>
+        <div class="ai-dash-panel">
+          <div class="ai-dash-panel-title">SEVERITY MIX</div>
+          <div class="ai-dash-severity">
+            <div class="ai-dash-donut" style="background:${conic}"><div class="ai-dash-donut-hole"></div></div>
+            <div class="ai-dash-sev-legend">
+              <div><span class="dot" style="background:#C84B31"></span>High <b>${high}%</b></div>
+              <div><span class="dot" style="background:#B7770D"></span>Med <b>${med}%</b></div>
+              <div><span class="dot" style="background:#2D6A4F"></span>Low <b>${low}%</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ai-dash-panel">
+        <div class="ai-dash-panel-title">
+          7-DAY TREND
+          <span style="float:right; color:${trendColor}; font-weight:600">${trendArrow} ${d.change_pct >= 0 ? '+' : ''}${d.change_pct}%</span>
+        </div>
+        ${renderTrendSVG(d.trend, accent)}
+      </div>
+      <div class="ai-dash-panel">
+        <div class="ai-dash-panel-title">NGOs WORKING IN ${d.area.toUpperCase()} · ${d.ngo_count}</div>
+        ${ngoRows}
+      </div>
+      <div class="ai-dash-verdict">
+        <b>AI insight:</b> ${formatBold(escHtml(d.insight))}
+      </div>
+    `;
+  }
+
+  function renderMiniArea(d, color) {
+    const trendArrow = d.change_pct > 0 ? '↑' : d.change_pct < 0 ? '↓' : '→';
+    const maxCount = Math.max(...d.categories.map(c => c.count), 1);
+    const catRows = d.categories.slice(0, 4).map(c => `
+      <div class="ai-dash-bar-row">
+        <span class="ai-dash-bar-label">${escHtml(c.label)}</span>
+        ${bar((c.count / maxCount) * 100, color)}
+        <span class="ai-dash-bar-num" style="color:${color}">${c.count}</span>
+      </div>`).join('');
+
+    // Severity donut (same conic-gradient trick as single-area)
+    const high = d.severity.high_pct;
+    const med  = d.severity.medium_pct;
+    const low  = 100 - high - med;
+    const conic = `conic-gradient(#C84B31 0 ${high}%, #B7770D ${high}% ${high+med}%, #2D6A4F ${high+med}% 100%)`;
+
+    const ngoList = d.ngos.length
+      ? d.ngos.slice(0, 3).map(n => `<div class="ai-dash-ngo-mini">${escHtml(n.name)} · ${(n.rating||4).toFixed(1)}★</div>`).join('')
+      : '<div class="ai-dash-empty">No NGOs nearby</div>';
+
+    return `
+      <div class="ai-dash-mini-header" style="color:${color}">${escHtml(d.area)}</div>
+      <div class="ai-dash-mini-num" style="color:${color}">${d.total}</div>
+      <div class="ai-dash-mini-stats">
+        <span><b>${d.open}</b> open</span>
+        <span><b>${d.resolved}</b> resolved</span>
+        <span style="color:${color}">${trendArrow} ${d.change_pct>=0?'+':''}${d.change_pct}%</span>
+      </div>
+      <div class="ai-dash-mini-section-title">CATEGORIES</div>
+      ${catRows || '<div class="ai-dash-empty">No data</div>'}
+      <div class="ai-dash-mini-section-title">SEVERITY MIX</div>
+      <div class="ai-dash-severity">
+        <div class="ai-dash-donut" style="background:${conic}"><div class="ai-dash-donut-hole"></div></div>
+        <div class="ai-dash-sev-legend">
+          <div><span class="dot" style="background:#C84B31"></span>High <b>${high}%</b></div>
+          <div><span class="dot" style="background:#B7770D"></span>Med <b>${med}%</b></div>
+          <div><span class="dot" style="background:#2D6A4F"></span>Low <b>${low}%</b></div>
+        </div>
+      </div>
+      <div class="ai-dash-mini-section-title">7-DAY TREND</div>
+      ${renderTrendSVG(d.trend, color)}
+      <div class="ai-dash-mini-section-title">NGOs (${d.ngo_count})</div>
+      ${ngoList}
+    `;
+  }
+
+  function renderCompare(payload) {
+    return `
+      <div class="ai-dash-header">
+        <div>
+          <div class="ai-dash-kicker">COMPARING</div>
+          <div class="ai-dash-title">
+            <span style="color:#C84B31">${escHtml(payload.area_a.area)}</span>
+            <span style="color:var(--text2); font-weight:400; margin:0 8px">vs</span>
+            <span style="color:#1B4F72">${escHtml(payload.area_b.area)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="ai-dash-compare-grid">
+        <div class="ai-dash-mini">${renderMiniArea(payload.area_a, '#C84B31')}</div>
+        <div class="ai-dash-mini">${renderMiniArea(payload.area_b, '#1B4F72')}</div>
+      </div>
+      <div class="ai-dash-verdict">
+        <b>AI verdict:</b> ${formatBold(escHtml(payload.verdict))}
+      </div>
+    `;
+  }
+
+  // Global API: open / close the dashboard modal
+  window.openAreaDashboard = function (payload) {
+    const data = payload || window.__lastDashboardPayload;
+    if (!data || data.type !== 'dashboard') return;
+    const modal = ensureDashboardModal();
+    const body = modal.querySelector('#ai-dash-body');
+    body.innerHTML = (data.mode === 'compare')
+      ? renderCompare(data)
+      : renderSingleArea(data);
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closeAreaDashboard = function () {
+    const modal = document.getElementById('ai-dash-modal');
+    if (modal) modal.classList.add('hidden');
+    document.body.style.overflow = '';
+  };
+
+  // Esc to close
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') window.closeAreaDashboard();
+  });
+
 })();

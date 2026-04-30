@@ -426,8 +426,52 @@ def ask_ai(query, issues, current_user=None):
     if any(k in q for k in ['cleanest','safest','best area','least problems','fewest']):
         return _cleanest_areas(issues)
 
+    # ── RICH COMPARISON: "compare X vs Y" / "X vs Y" ──
+    compare_match = _detect_compare_query(q)
+    if compare_match:
+        a_raw, b_raw = compare_match
+        # Try the issues list first (data-driven), then fall back to the
+        # canonical Delhi area list — so users can compare an area that
+        # doesn't have reports yet (e.g. "compare rohini vs saket" when
+        # Saket is brand new).
+        a_real = _match_area(a_raw, issues) or _match_known_area(a_raw)
+        b_real = _match_area(b_raw, issues) or _match_known_area(b_raw)
+        if a_real and b_real and a_real != b_real:
+            return _compare_dashboard_data(a_real, b_real, issues, ngo_fetcher=_get_ngo_fetcher())
+        if a_real and b_real and a_real == b_real:
+            return {
+                'type': 'text',
+                'message': (f"Both names point to the same area (**{a_real}**). "
+                            f"Try comparing two different areas, e.g. "
+                            f"*compare rohini vs saket*."),
+            }
+        if not a_real or not b_real:
+            missing = []
+            if not a_real: missing.append(a_raw)
+            if not b_real: missing.append(b_raw)
+            return {
+                'type': 'text',
+                'message': (f"I couldn't recognize **{', '.join(missing)}** as a Delhi area. "
+                            f"Try a known area like *Rohini*, *Saket*, *Dwarka*, "
+                            f"*Lajpat Nagar*, or *Hauz Khas*."),
+            }
+
     # ── Specific area lookup BEFORE map intent so "pinpoint rohini" filters correctly ──
     area_match = _match_area(q, issues)
+
+    # ── DASHBOARD trigger: "show report rohini", "rohini report", "how is rohini" ──
+    # Falls into rich dashboard view if user explicitly asked for a report/dashboard,
+    # OR if they just typed an area name with no other intent.
+    if area_match and _detect_dashboard_query(q):
+        return _area_dashboard_data(area_match, issues, ngo_fetcher=_get_ngo_fetcher())
+
+    # If user typed JUST an area name (no other words), treat as dashboard request
+    if area_match:
+        # Strip the matched area from query and check if anything else remains
+        q_no_area = re.sub(re.escape(area_match.lower()), '', q.lower()).strip()
+        q_no_area = re.sub(r'[?!.,]', '', q_no_area).strip()
+        if not q_no_area or q_no_area in ('show', 'report', 'dashboard', 'info', 'data'):
+            return _area_dashboard_data(area_match, issues, ngo_fetcher=_get_ngo_fetcher())
 
     # If user mentions an area + a map verb → plot only that area
     map_verbs = ['where','location','map','show me','plot','heatmap','marker',
@@ -603,16 +647,87 @@ def _cleanest_areas(issues):
 
 def _match_area(q, issues):
     """If the query mentions a known area name, return it. Tolerates
-    missing spaces ('modeltown' → 'Model Town') and case differences."""
-    q_squish = re.sub(r'\s+', '', q.lower())   # 'pinpoint modeltown' → 'pinpointmodeltown'
-    areas = {(i.get('area') or '') for i in issues if i.get('area')}
-    # Sort longer names first so "Greater Kailash" beats "Kailash" if both existed
-    for real in sorted(areas, key=len, reverse=True):
-        if not real:
-            continue
+    missing spaces ('modeltown' → 'Model Town') and case differences.
+    Strategy:
+      1. Exact match on the trimmed query → wins (handles "compare rohini to saket"
+         where each side is JUST the area name)
+      2. Whole-word match (regex with \\b boundaries) → wins over substring
+      3. Substring match on squished form → final fallback
+    """
+    q_norm = q.lower().strip().rstrip('?.,!')
+    q_squish = re.sub(r'\s+', '', q_norm)
+    areas = sorted(
+        {(i.get('area') or '') for i in issues if i.get('area')},
+        key=len, reverse=True,
+    )
+
+    # Pass 1: exact match (whole query is exactly the area name)
+    for real in areas:
+        if not real: continue
+        if q_norm == real.lower() or q_squish == re.sub(r'\s+', '', real.lower()):
+            return real
+
+    # Pass 2: word-boundary match
+    for real in areas:
+        if not real: continue
+        spaced = real.lower()
+        # \b doesn't work great with multi-word names; we test if the area name
+        # appears with surrounding non-alphanumeric chars or at string boundaries
+        if re.search(r'(?:^|[^a-z0-9])' + re.escape(spaced) + r'(?:[^a-z0-9]|$)', q_norm):
+            return real
+
+    # Pass 3: squished substring match (handles "modeltown" → "Model Town")
+    for real in areas:
+        if not real: continue
+        squished = re.sub(r'\s+', '', real.lower())
+        if squished and squished in q_squish:
+            return real
+
+    return None
+
+
+# Canonical Delhi area list — used for compare lookup when the issue DB is
+# empty for one side. Keep in sync with AREA_COORDS in app.py.
+KNOWN_DELHI_AREAS = [
+    'Connaught Place','Paharganj','Daryaganj','Chandni Chowk','Karol Bagh',
+    'Patel Nagar','Rajendra Place','Sadar Bazar','Civil Lines','Kamla Nagar',
+    'Rohini','Pitampura','Model Town','Shalimar Bagh','Burari','Narela',
+    'Bawana','Alipur','Mukherjee Nagar','GTB Nagar','Adarsh Nagar',
+    'Ashok Vihar','Wazirabad','Bhalswa','Saket','Vasant Kunj','Mehrauli',
+    'Malviya Nagar','Hauz Khas','Greater Kailash','Lajpat Nagar','Kalkaji',
+    'Tughlakabad','Okhla','Badarpur','Sangam Vihar','Govindpuri',
+    'Sarita Vihar','Jasola','Madangir','Munirka','RK Puram','Vasant Vihar',
+    'Chirag Delhi','Pushp Vihar','Deoli','Dwarka','Janakpuri','Uttam Nagar',
+    'Vikaspuri','Najafgarh','Palam','Dabri','Kakrola','Bindapur','Nawada',
+    'Dwarka Mor','Rajouri Garden','Punjabi Bagh','Tilak Nagar',
+    'Subhash Nagar','Peeragarhi','Nangloi','Mundka','Paschim Vihar',
+    'Madipur','Tagore Garden','Ramesh Nagar','Moti Nagar','Kirti Nagar',
+    'Hari Nagar','Shahdara','Seelampur','Yamuna Vihar','Welcome',
+    'Karkardooma','Anand Vihar','Preet Vihar','Mayur Vihar','Laxmi Nagar',
+    'Geeta Colony',
+]
+
+
+def _match_known_area(text):
+    """Match a free-form text against the canonical Delhi area list.
+    Used as a fallback when no reports exist for the area yet."""
+    t = (text or '').strip().lower().rstrip('?.,!')
+    if not t:
+        return None
+    t_squish = re.sub(r'\s+', '', t)
+    # Sort longer first so multi-word areas win
+    for real in sorted(KNOWN_DELHI_AREAS, key=len, reverse=True):
         spaced = real.lower()
         squished = re.sub(r'\s+', '', spaced)
-        if spaced in q.lower() or squished in q_squish:
+        if t == spaced or t_squish == squished:
+            return real
+        # whole-word match
+        if re.search(r'(?:^|[^a-z0-9])' + re.escape(spaced) + r'(?:[^a-z0-9]|$)', t):
+            return real
+    # Final fallback: squished substring
+    for real in sorted(KNOWN_DELHI_AREAS, key=len, reverse=True):
+        squished = re.sub(r'\s+', '', real.lower())
+        if squished and squished in t_squish:
             return real
     return None
 
@@ -660,6 +775,285 @@ def _table_compare(issues, hours=24*7):
         'columns': ['Category', 'Reports'],
         'rows': rows,
     }
+
+
+# ── 5b. RICH DASHBOARD: area lookup + 2-area comparison ────
+# These power the inline dashboard modal in chat. Pure data — no LLM needed.
+
+def _area_dashboard_data(area, issues, ngo_fetcher=None, after_report_id=None, allow_empty=False):
+    """Build the full data payload for a single-area dashboard.
+
+    Args:
+        area: area name (str).
+        issues: list of all issues.
+        ngo_fetcher: optional callable (lat, lng, tag, limit) -> list of NGO dicts.
+                     If None, NGOs are computed from issues' authority field only.
+        after_report_id: if set, prepend a success banner referencing this report.
+        allow_empty: if True, return a zeroed dashboard even with no data
+                     (used by compare so both sides always render).
+
+    Returns dict with type='dashboard', mode='single', and all visual fields.
+    """
+    area_issues = [i for i in issues if (i.get('area') or '').lower() == area.lower()]
+    if not area_issues and not allow_empty:
+        return {
+            'type': 'text',
+            'message': f"No reports found for **{area}** yet. Be the first to report!",
+        }
+
+    # ── core counts ──
+    total = len(area_issues)
+    open_n = sum(1 for i in area_issues if i.get('status') not in ('resolved',))
+    resolved_n = sum(1 for i in area_issues if i.get('status') == 'resolved')
+
+    # ── category breakdown (top 6) ──
+    by_tag = Counter(i.get('tag', 'other') for i in area_issues)
+    categories = [
+        {'tag': t, 'label': t.title(), 'count': n}
+        for t, n in by_tag.most_common(6)
+    ]
+    top_category = categories[0]['label'] if categories else 'N/A'
+
+    # ── severity mix (high / medium / low) ──
+    sev_counter = Counter(i.get('severity', 'medium') for i in area_issues)
+    severity = {
+        'high':   sev_counter.get('high', 0),
+        'medium': sev_counter.get('medium', 0),
+        'low':    sev_counter.get('low', 0),
+    }
+    if total > 0:
+        severity['high_pct']   = round(severity['high']   * 100 / total)
+        severity['medium_pct'] = round(severity['medium'] * 100 / total)
+        severity['low_pct']    = round(severity['low']    * 100 / total)
+    else:
+        severity['high_pct'] = severity['medium_pct'] = severity['low_pct'] = 0
+
+    # Avg severity label (for compact display)
+    if severity['high'] >= severity['medium'] and severity['high'] >= severity['low']:
+        avg_severity = 'High'
+    elif severity['low'] > severity['medium']:
+        avg_severity = 'Low'
+    else:
+        avg_severity = 'Medium'
+
+    # ── 7-day trend ──
+    now = time.time()
+    day_buckets = [0] * 7  # idx 0 = today, idx 6 = 6 days ago
+    for i in area_issues:
+        ts = i.get('timestamp', 0)
+        if not ts:
+            continue
+        days_ago = int((now - ts) / 86400)
+        if 0 <= days_ago < 7:
+            day_buckets[days_ago] += 1
+    trend = list(reversed(day_buckets))   # left = oldest, right = newest
+
+    # Trend direction (last 3 days vs prev 3 days)
+    recent_3 = sum(trend[-3:])
+    prev_3 = sum(trend[:3])
+    if prev_3 > 0:
+        change_pct = round((recent_3 - prev_3) * 100 / max(prev_3, 1))
+    elif recent_3 == 0:
+        change_pct = 0
+    elif recent_3 >= 3:
+        change_pct = 100   # genuine spike from zero
+    else:
+        change_pct = 30    # mild uptick from no baseline — don't over-inflate
+
+    # ── NGOs (use coordinate of first issue or area_coords lookup) ──
+    ngos = []
+    if ngo_fetcher:
+        # Use coords of any issue in the area
+        lat = lng = None
+        for i in area_issues:
+            if i.get('lat') and i.get('lng'):
+                lat, lng = i['lat'], i['lng']
+                break
+        if lat and lng:
+            try:
+                raw = ngo_fetcher(lat, lng, None, 8) or []
+                # Keep only those within ~5km
+                ngos = [
+                    {
+                        'name':         n.get('name', 'NGO'),
+                        'tag':          n.get('tag', 'other'),
+                        'distance_km':  n.get('distance_km', 0),
+                        'rating':       n.get('rating', 4.0),
+                        'resolved':     n.get('resolved', 0),
+                    }
+                    for n in raw if n.get('distance_km', 999) < 5.0
+                ][:5]
+            except Exception as e:
+                print(f"[area_dashboard] ngo_fetcher failed: {e}")
+
+    # ── AI insight (deterministic — no LLM needed) ──
+    insight_parts = []
+    if change_pct >= 30:
+        insight_parts.append(f"reports up {change_pct}% this week")
+    elif change_pct <= -20:
+        insight_parts.append(f"reports down {abs(change_pct)}% this week")
+    if severity['high_pct'] >= 50:
+        insight_parts.append(f"{severity['high_pct']}% high-severity")
+    if categories:
+        insight_parts.append(f"dominated by {categories[0]['label'].lower()}")
+    if ngos:
+        closest = min(ngos, key=lambda n: n['distance_km'])
+        insight_parts.append(f"closest NGO is {closest['name']} ({closest['distance_km']} km)")
+
+    if insight_parts:
+        insight = f"**{area}**: " + ", ".join(insight_parts) + "."
+    elif total == 0:
+        insight = f"**{area}** has no reports yet — clean slate so far."
+    else:
+        insight = f"**{area}** is stable — {total} report{'s' if total != 1 else ''} on file."
+
+    # ── after-report banner ──
+    banner = None
+    if after_report_id:
+        # Count user's reports in this area today (≈ "you're report #N today")
+        today_cutoff = now - 24 * 3600
+        today_in_area = sum(
+            1 for i in area_issues
+            if i.get('timestamp', 0) >= today_cutoff
+        )
+        banner = {
+            'kind': 'success',
+            'message': (f"Report #{after_report_id} submitted. "
+                        f"You're report #{today_in_area} in {area} today."),
+        }
+
+    return {
+        'type':         'dashboard',
+        'mode':         'single',
+        'area':         area,
+        'total':        total,
+        'open':         open_n,
+        'resolved':     resolved_n,
+        'top_category': top_category,
+        'avg_severity': avg_severity,
+        'categories':   categories,
+        'severity':     severity,
+        'trend':        trend,
+        'change_pct':   change_pct,
+        'ngos':         ngos,
+        'ngo_count':    len(ngos),
+        'insight':      insight,
+        'banner':       banner,
+        'message':      f"Showing live dashboard for **{area}**.",
+    }
+
+
+def _compare_dashboard_data(area_a, area_b, issues, ngo_fetcher=None):
+    """Build a side-by-side comparison payload for two areas.
+    Even if one side has no reports yet, render an empty dashboard so the user
+    can still see the contrast (e.g., "Rohini has 5, Saket has 0")."""
+    a = _area_dashboard_data(area_a, issues, ngo_fetcher=ngo_fetcher, allow_empty=True)
+    b = _area_dashboard_data(area_b, issues, ngo_fetcher=ngo_fetcher, allow_empty=True)
+
+    # Both empty → genuinely nothing to compare
+    if a.get('type') == 'dashboard' and b.get('type') == 'dashboard' \
+            and a['total'] == 0 and b['total'] == 0:
+        return {
+            'type': 'text',
+            'message': (f"No reports yet for **{area_a}** or **{area_b}**. "
+                        f"Be the first to file one!"),
+        }
+
+    # ── Combined verdict (deterministic) ──
+    def _score(d):
+        # Higher score = worse situation
+        sev_weight = d['severity']['high'] * 3 + d['severity']['medium'] * 1
+        # Cap trend bonus so a percentage doesn't dominate small absolute counts
+        trend_bonus = max(min(d['change_pct'], 50), 0) * 0.10
+        return d['open'] * 2 + sev_weight + trend_bonus
+
+    sa, sb = _score(a), _score(b)
+    if sa > sb * 1.3:
+        worse = area_a
+        verdict = (f"**{area_a}** needs more attention — "
+                   f"{a['open']} open issues, {a['severity']['high_pct']}% high severity. "
+                   f"**{area_b}** is more stable.")
+    elif sb > sa * 1.3:
+        worse = area_b
+        verdict = (f"**{area_b}** needs more attention — "
+                   f"{b['open']} open issues, {b['severity']['high_pct']}% high severity. "
+                   f"**{area_a}** is more stable.")
+    else:
+        worse = None
+        verdict = (f"Both areas show similar levels of civic activity. "
+                   f"**{area_a}**: {a['total']} reports · **{area_b}**: {b['total']} reports.")
+
+    # Strip per-area banners for compare mode
+    a.pop('banner', None); b.pop('banner', None)
+
+    return {
+        'type':       'dashboard',
+        'mode':       'compare',
+        'area_a':     a,
+        'area_b':     b,
+        'worse':      worse,
+        'verdict':    verdict,
+        'message':    f"Comparing **{area_a}** vs **{area_b}**.",
+    }
+
+
+def _detect_compare_query(q):
+    """Returns (area_a, area_b) if query is 'compare X vs Y' shape, else None.
+    Accepts: vs, versus, v, v/s, and, with, to, compared to, against."""
+    q_low = q.lower().strip().rstrip('?.,!')
+    had_compare_verb = False
+    # Strip leading verb
+    for verb in ['compare ', 'vs ', 'versus ']:
+        if q_low.startswith(verb):
+            q_low = q_low[len(verb):]
+            if verb == 'compare ':
+                had_compare_verb = True
+            break
+    # Patterns: explicit separators
+    for sep in [' vs ', ' versus ', ' v/s ', ' v ', ' and ', ' with ',
+                ' compared to ', ' against ', ' to ']:
+        if sep in q_low:
+            parts = q_low.split(sep, 1)
+            if len(parts) == 2:
+                a = parts[0].strip().rstrip('?.,')
+                b = parts[1].strip().rstrip('?.,')
+                if a and b:
+                    return (a, b)
+    # Fallback: "compare X Y" with no separator at all
+    # Only fire if the user said "compare" and there are at least 2 words left
+    if had_compare_verb:
+        words = q_low.split()
+        if len(words) == 2:
+            return (words[0], words[1])
+        # "compare greater kailash hauz khas" → split in middle
+        if len(words) == 4:
+            return (' '.join(words[:2]), ' '.join(words[2:]))
+    return None
+
+
+def _detect_dashboard_query(q):
+    """Returns True if query asks for full report/dashboard of an area.
+    e.g. 'show report rohini', 'rohini report', 'how is rohini',
+    'rohini dashboard', 'show me rohini'.
+    """
+    q_low = q.lower().strip()
+    triggers = [
+        'show report', 'full report', 'area report', 'dashboard',
+        'how is ', "how's ", 'whats happening in', "what's happening in",
+        'report on', 'report of', 'report for',
+        'tell me about ', 'show me ',
+    ]
+    return any(t in q_low for t in triggers)
+
+
+def _get_ngo_fetcher():
+    """Lazy import of database.get_nearby_ngos to avoid circular import."""
+    try:
+        from database import get_nearby_ngos
+        return get_nearby_ngos
+    except Exception as e:
+        print(f"[ai_engine] could not load NGO fetcher: {e}")
+        return None
 
 
 # ── 6. HUGGING FACE ROUTER INTEGRATION + SMART FALLBACK ───

@@ -237,3 +237,241 @@
 /* Dark mode tweaks */
 body.dark .ai-msg-bubble { background: rgba(255,255,255,0.06); }
 body.dark .ai-panel { box-shadow: 0 24px 60px rgba(0,0,0,0.5); }
+
+/* ════════════════════════════════════════════════════════════
+   AreaPulse Dashboard Modal — single-area + 2-area compare
+   ══════════════════════════════════════════════════════════ */
+
+/* Inline preview card (in chat bubble) */
+.ai-dash-preview {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(200,75,49,0.08), rgba(27,79,114,0.08));
+  border: 1px solid rgba(200,75,49,0.20);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ai-dash-preview:hover { border-color: var(--accent); transform: translateY(-1px); }
+.ai-dash-preview-title {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 600; font-size: 14px; color: var(--text);
+}
+.ai-dash-preview-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.ai-dash-preview-cta { font-size: 11px; color: var(--accent); margin-top: 6px; font-weight: 500; }
+
+/* Modal backdrop */
+.ai-dash-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15,13,11,0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: aiDashFadeIn 0.2s ease;
+}
+.ai-dash-modal-backdrop.hidden { display: none; }
+@keyframes aiDashFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.ai-dash-modal-card {
+  background: var(--bg, #F5F3EE);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 16px;
+  width: min(960px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px 28px;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.30);
+  animation: aiDashSlideUp 0.25s ease;
+}
+@keyframes aiDashSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+body.dark .ai-dash-modal-card {
+  background: #1A1714;
+  border-color: rgba(255,255,255,0.08);
+}
+
+.ai-dash-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 32px; height: 32px;
+  background: rgba(0,0,0,0.05); border: none; border-radius: 50%;
+  cursor: pointer; font-size: 16px; color: var(--text2);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+}
+.ai-dash-close:hover { background: rgba(0,0,0,0.10); color: var(--text); }
+body.dark .ai-dash-close { background: rgba(255,255,255,0.08); }
+body.dark .ai-dash-close:hover { background: rgba(255,255,255,0.16); }
+
+/* Header */
+.ai-dash-header {
+  padding-bottom: 14px; margin-bottom: 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+body.dark .ai-dash-header { border-color: rgba(255,255,255,0.08); }
+.ai-dash-kicker {
+  font-size: 11px; letter-spacing: 0.08em; color: var(--text2);
+  font-weight: 600; text-transform: uppercase;
+}
+.ai-dash-title {
+  font-size: 22px; font-weight: 600; color: var(--text);
+  margin-top: 2px; font-family: Georgia, serif;
+}
+
+/* Success banner */
+.ai-dash-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: 10px; margin-bottom: 16px;
+  font-size: 13px;
+}
+.ai-dash-banner-success {
+  background: rgba(45,106,79,0.12); color: #1F4D38; border: 1px solid rgba(45,106,79,0.20);
+}
+.ai-dash-banner-icon {
+  width: 24px; height: 24px; border-radius: 50%; background: #2D6A4F; color: #FFF;
+  display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px;
+  flex-shrink: 0;
+}
+body.dark .ai-dash-banner-success { color: #98D9B4; }
+
+/* Stats row */
+.ai-dash-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  margin-bottom: 16px;
+}
+.ai-dash-stat {
+  background: rgba(0,0,0,0.03); padding: 12px 14px; border-radius: 10px;
+}
+body.dark .ai-dash-stat { background: rgba(255,255,255,0.04); }
+.ai-dash-stat-label { font-size: 11px; color: var(--text2); }
+.ai-dash-stat-num { font-size: 24px; font-weight: 600; margin-top: 4px; font-family: Georgia, serif; }
+
+/* Panels (categories, severity, trend, NGOs) */
+.ai-dash-panel {
+  background: rgba(0,0,0,0.03); padding: 14px 16px; border-radius: 10px;
+  margin-bottom: 12px;
+}
+body.dark .ai-dash-panel { background: rgba(255,255,255,0.04); }
+.ai-dash-panel-title {
+  font-size: 11px; letter-spacing: 0.06em; color: var(--text2);
+  text-transform: uppercase; font-weight: 600; margin-bottom: 10px;
+}
+
+.ai-dash-grid-2 {
+  display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Category bars */
+.ai-dash-bar-row {
+  display: grid; grid-template-columns: 80px 1fr 30px;
+  align-items: center; gap: 10px;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+.ai-dash-bar-label { color: var(--text2); }
+.ai-dash-bar {
+  height: 8px; background: rgba(0,0,0,0.08); border-radius: 4px; overflow: hidden;
+}
+body.dark .ai-dash-bar { background: rgba(255,255,255,0.10); }
+.ai-dash-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+.ai-dash-bar-num { font-weight: 600; text-align: right; }
+
+/* Severity donut */
+.ai-dash-severity {
+  display: flex; align-items: center; gap: 14px;
+}
+.ai-dash-donut {
+  width: 80px; height: 80px; border-radius: 50%;
+  position: relative; flex-shrink: 0;
+}
+.ai-dash-donut-hole {
+  position: absolute; inset: 18px;
+  background: var(--bg, #F5F3EE);
+  border-radius: 50%;
+}
+body.dark .ai-dash-donut-hole { background: #1A1714; }
+.ai-dash-sev-legend { font-size: 12px; color: var(--text2); display: flex; flex-direction: column; gap: 4px; }
+.ai-dash-sev-legend .dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px;
+}
+.ai-dash-sev-legend b { color: var(--text); margin-left: 4px; }
+
+/* NGO list */
+.ai-dash-ngo-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-top: 1px solid rgba(0,0,0,0.06);
+  font-size: 13px;
+}
+body.dark .ai-dash-ngo-row { border-color: rgba(255,255,255,0.06); }
+.ai-dash-ngo-row:first-child { border-top: none; }
+.ai-dash-ngo-name { font-weight: 500; color: var(--text); }
+.ai-dash-ngo-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.ai-dash-ngo-rating { color: #B7770D; font-weight: 600; font-size: 13px; }
+
+.ai-dash-empty {
+  font-size: 12px; color: var(--text3); padding: 8px 0; font-style: italic;
+}
+
+/* Verdict box */
+.ai-dash-verdict {
+  margin-top: 16px; padding: 12px 14px;
+  background: rgba(27,79,114,0.08);
+  border: 1px solid rgba(27,79,114,0.18);
+  border-radius: 10px; font-size: 13px; color: var(--text);
+  line-height: 1.5;
+}
+.ai-dash-verdict b { color: #1B4F72; }
+body.dark .ai-dash-verdict { background: rgba(85,183,234,0.10); border-color: rgba(85,183,234,0.20); }
+body.dark .ai-dash-verdict b { color: #85B7EA; }
+
+/* Compare mode */
+.ai-dash-compare-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 12px;
+}
+.ai-dash-mini {
+  background: rgba(0,0,0,0.03); padding: 16px; border-radius: 10px;
+}
+body.dark .ai-dash-mini { background: rgba(255,255,255,0.04); }
+.ai-dash-mini-header {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ai-dash-mini-num {
+  font-size: 36px; font-weight: 600; font-family: Georgia, serif;
+  margin: 4px 0 8px;
+}
+.ai-dash-mini-stats {
+  display: flex; gap: 12px; font-size: 12px; color: var(--text2);
+  padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08); margin-bottom: 12px;
+}
+body.dark .ai-dash-mini-stats { border-color: rgba(255,255,255,0.08); }
+.ai-dash-mini-stats b { color: var(--text); }
+.ai-dash-mini-section-title {
+  font-size: 10.5px; letter-spacing: 0.06em; color: var(--text3);
+  text-transform: uppercase; font-weight: 600; margin: 12px 0 6px;
+}
+.ai-dash-mini-sev {
+  font-size: 12.5px; color: var(--text2);
+}
+.ai-dash-mini-sev b { color: var(--text); }
+.ai-dash-ngo-mini {
+  font-size: 12px; color: var(--text2); padding: 3px 0;
+}
+
+/* Mobile */
+@media (max-width: 720px) {
+  .ai-dash-modal-card { padding: 18px 16px; max-height: 95vh; }
+  .ai-dash-stats { grid-template-columns: repeat(2, 1fr); }
+  .ai-dash-grid-2 { grid-template-columns: 1fr; }
+  .ai-dash-compare-grid { grid-template-columns: 1fr; }
+  .ai-dash-title { font-size: 18px; }
+  .ai-dash-stat-num { font-size: 20px; }
+  .ai-dash-mini-num { font-size: 28px; }
+  .ai-dash-bar-row { grid-template-columns: 70px 1fr 30px; font-size: 12px; }
+}
