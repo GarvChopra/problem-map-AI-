@@ -131,6 +131,12 @@ def logout():
 # ── PAGES ──────────────────────────────────────────────
 @app.route('/')
 def home():
+    """Marketing landing page (Firebase-style)."""
+    return render_template('landing.html', current_user=session.get('user'))
+
+@app.route('/app')
+def app_view():
+    """The actual product — map, sidebar, report form."""
     return render_template('index.html', current_user=session.get('user'))
 
 @app.route('/issues-page')

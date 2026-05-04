@@ -1,0 +1,687 @@
+{% extends "base.html" %}
+{% block title %}AreaPulse — AI-Powered Civic Issue Heatmap for Delhi{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ════════════════════════════════════════════════════════════
+     LANDING PAGE — Firebase-style scrolling marketing site
+     Sections: Hero · Features · How it works · About · Contact
+     ══════════════════════════════════════════════════════════ */
+
+  /* Reset page-wrap padding for full-width landing */
+  .page-wrap { max-width: none; padding: 0; }
+
+  /* ── Smooth scrolling ─────────────────────────────────── */
+  html { scroll-behavior: smooth; }
+
+  /* ── Sticky "Open App" floating CTA ──────────────────── */
+  .land-app-cta {
+    position: fixed;
+    top: 14px; right: 24px;
+    z-index: 200;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    box-shadow: 0 4px 14px rgba(200,75,49,0.30);
+  }
+  .land-app-cta:hover {
+    background: #A0382A;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(200,75,49,0.40);
+    text-decoration: none;
+  }
+  .land-app-cta svg { width: 14px; height: 14px; }
+  /* Hide the floating CTA when navbar already has one (mobile) */
+  @media (max-width: 720px) { .land-app-cta { right: 14px; padding: 7px 14px; font-size: 12px; } }
+
+  /* ════ SECTION SHELL ════════════════════════════════════ */
+  .land-section {
+    padding: 90px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+    scroll-margin-top: 80px;
+  }
+  .land-section-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    color: var(--accent);
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .land-section h2 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 18px;
+    color: var(--text);
+  }
+  .land-section-sub {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text2);
+    max-width: 640px;
+    margin-bottom: 50px;
+  }
+
+  /* ════ 1. HERO ══════════════════════════════════════════ */
+  .land-hero {
+    padding: 110px 24px 70px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .land-hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid rgba(200,75,49,0.30);
+    border-radius: 20px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 28px;
+    background: rgba(200,75,49,0.06);
+  }
+  .land-hero-eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  .land-hero h1 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: clamp(40px, 7vw, 68px);
+    line-height: 1.0;
+    letter-spacing: -0.025em;
+    margin: 0 0 8px;
+    font-weight: 400;
+    color: var(--text);
+    max-width: 880px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .land-hero h1 .accent { color: var(--accent); font-style: italic; }
+  .land-hero p {
+    font-size: 18px;
+    color: var(--text2);
+    max-width: 560px;
+    margin: 28px auto 36px;
+    line-height: 1.6;
+  }
+  .land-hero-buttons {
+    display: inline-flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .btn-hero-primary {
+    background: var(--accent); color: #fff;
+    padding: 13px 26px; border-radius: 10px;
+    font-size: 14px; font-weight: 600;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+    border: none; cursor: pointer; font-family: inherit;
+  }
+  .btn-hero-primary:hover {
+    background: #A0382A; color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(200,75,49,0.30);
+    text-decoration: none;
+  }
+  .btn-hero-secondary {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border);
+    padding: 13px 26px; border-radius: 10px;
+    font-size: 14px; font-weight: 600;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-hero-secondary:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+  /* Stats row directly below hero */
+  .land-hero-stats {
+    margin-top: 60px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-top: 36px;
+    border-top: 1px solid var(--border);
+  }
+  .land-hero-stat {
+    text-align: center;
+    border-right: 1px solid var(--border);
+    padding: 0 12px;
+  }
+  .land-hero-stat:last-child { border-right: none; }
+  .land-hero-stat-num {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 32px;
+    color: var(--text);
+    font-weight: 400;
+    line-height: 1;
+  }
+  .land-hero-stat-label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-top: 8px;
+    font-weight: 600;
+  }
+
+  /* ════ 2. FEATURES ═════════════════════════════════════ */
+  #features { background: var(--surface); border-bottom: 1px solid var(--border); }
+  #features.land-section { max-width: none; padding: 90px 24px; }
+  .features-inner { max-width: 1100px; margin: 0 auto; }
+  .features-head { text-align: center; margin-bottom: 60px; }
+  .features-head h2 { margin-bottom: 14px; }
+  .features-head .land-section-sub { margin: 0 auto; }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .feature-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    transition: all 0.2s;
+  }
+  .feature-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.06);
+  }
+  body.dark .feature-card:hover { box-shadow: 0 12px 30px rgba(0,0,0,0.3); }
+  .feature-icon {
+    width: 44px; height: 44px;
+    background: rgba(200,75,49,0.08);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+    margin-bottom: 18px;
+  }
+  .feature-icon svg { width: 22px; height: 22px; }
+  .feature-card h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 10px;
+  }
+  .feature-card p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text2);
+    margin: 0;
+  }
+
+  /* ════ 3. HOW IT WORKS ═════════════════════════════════ */
+  #how { background: var(--bg); }
+  .how-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-top: 50px;
+  }
+  .how-step { position: relative; }
+  .how-step-num {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 56px;
+    color: rgba(200,75,49,0.18);
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+  body.dark .how-step-num { color: rgba(200,75,49,0.30); }
+  .how-step h3 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 10px;
+  }
+  .how-step p {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--text2);
+    margin: 0;
+  }
+
+  /* ════ 4. ABOUT ════════════════════════════════════════ */
+  #about { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 60px;
+    align-items: center;
+  }
+  .about-text h2 { margin-bottom: 18px; }
+  .about-text p {
+    font-size: 15px; line-height: 1.7; color: var(--text2); margin: 0 0 16px;
+  }
+  .about-tags {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px;
+  }
+  .about-tag {
+    font-size: 11.5px; padding: 5px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text2);
+    font-weight: 500;
+  }
+  .about-team-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 30px;
+  }
+  .about-team-card .team-eyebrow {
+    font-size: 11px; color: var(--accent);
+    letter-spacing: 0.08em; font-weight: 600;
+    text-transform: uppercase; margin-bottom: 12px;
+  }
+  .about-team-card h3 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 28px;
+    font-weight: 400;
+    margin: 0 0 24px;
+    color: var(--text);
+  }
+  .team-member {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .team-member:first-of-type { border-top: none; }
+  .team-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 14px; flex-shrink: 0;
+  }
+  .team-name { font-weight: 600; font-size: 14px; color: var(--text); }
+  .team-role { font-size: 12px; color: var(--text3); }
+
+  /* ════ 5. CONTACT ══════════════════════════════════════ */
+  #contact { background: var(--bg); text-align: center; }
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    max-width: 820px;
+    margin: 50px auto 0;
+  }
+  .contact-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 20px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+    display: block;
+  }
+  .contact-card:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-3px);
+    text-decoration: none;
+  }
+  .contact-icon {
+    width: 38px; height: 38px;
+    background: rgba(200,75,49,0.08);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+    margin: 0 auto 14px;
+  }
+  .contact-icon svg { width: 18px; height: 18px; }
+  .contact-label {
+    font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text3);
+    font-weight: 600; margin-bottom: 6px;
+  }
+  .contact-value {
+    font-size: 14px; font-weight: 500;
+    color: var(--text);
+  }
+
+  /* ════ FINAL CTA STRIP ═════════════════════════════════ */
+  .land-final-cta {
+    text-align: center;
+    padding: 80px 24px;
+    background: linear-gradient(135deg, var(--accent), #A0382A);
+    color: #fff;
+  }
+  .land-final-cta h2 {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    color: #fff;
+  }
+  .land-final-cta p {
+    font-size: 16px;
+    color: rgba(255,255,255,0.85);
+    margin: 0 0 28px;
+  }
+  .land-final-cta .btn-hero-primary {
+    background: #fff; color: var(--accent);
+  }
+  .land-final-cta .btn-hero-primary:hover {
+    background: #f5f5f5; color: var(--accent);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.20);
+  }
+
+  /* ════ FOOTER ══════════════════════════════════════════ */
+  .land-footer {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 30px 24px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text3);
+  }
+  .land-footer a { color: var(--text2); margin: 0 10px; text-decoration: none; }
+  .land-footer a:hover { color: var(--accent); }
+
+  /* ════ RESPONSIVE ══════════════════════════════════════ */
+  @media (max-width: 900px) {
+    .features-grid { grid-template-columns: repeat(2, 1fr); }
+    .how-steps { grid-template-columns: repeat(2, 1fr); }
+    .about-grid { grid-template-columns: 1fr; gap: 40px; }
+    .contact-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .land-section { padding: 60px 18px; }
+    .land-hero { padding: 80px 18px 50px; }
+    .features-grid { grid-template-columns: 1fr; }
+    .how-steps { grid-template-columns: 1fr; }
+    .land-hero-stats { grid-template-columns: repeat(2, 1fr); gap: 18px; }
+    .land-hero-stat { border-right: none; padding: 8px 0; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Sticky "Open App" CTA at top right (firebase-style "Go to console") -->
+<a href="/app" class="land-app-cta">
+  Open App
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h14M13 5l7 7-7 7"/>
+  </svg>
+</a>
+
+<!-- ═══════════════ 1. HERO ═══════════════ -->
+<section class="land-hero">
+  <div class="land-hero-eyebrow">SHIPPED FOR DELHI · 2026</div>
+  <h1>
+    Civic complaints that<br>
+    <span class="accent">actually go somewhere.</span>
+  </h1>
+  <p>AreaPulse turns citizen photos into AI-classified, GPS-tagged civic complaints — routed to the right Delhi authority in under 5 seconds. Free for citizens, forever.</p>
+  <div class="land-hero-buttons">
+    <a href="/app" class="btn-hero-primary">
+      Report an issue
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M13 5l7 7-7 7"/>
+      </svg>
+    </a>
+    <a href="#features" class="btn-hero-secondary">See how it works</a>
+  </div>
+
+  <div class="land-hero-stats">
+    <div class="land-hero-stat">
+      <div class="land-hero-stat-num" id="hero-stat-total">—</div>
+      <div class="land-hero-stat-label">Total reports</div>
+    </div>
+    <div class="land-hero-stat">
+      <div class="land-hero-stat-num" id="hero-stat-resolved">—</div>
+      <div class="land-hero-stat-label">Resolved</div>
+    </div>
+    <div class="land-hero-stat">
+      <div class="land-hero-stat-num">16</div>
+      <div class="land-hero-stat-label">NGOs active</div>
+    </div>
+    <div class="land-hero-stat">
+      <div class="land-hero-stat-num">&lt;5s</div>
+      <div class="land-hero-stat-label">AI response</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 2. FEATURES ═══════════════ -->
+<section id="features" class="land-section">
+  <div class="features-inner">
+    <div class="features-head">
+      <div class="land-section-eyebrow">Features</div>
+      <h2>One platform. Six superpowers.</h2>
+      <p class="land-section-sub">Every feature designed to turn fragmented complaints into structured civic intelligence.</p>
+    </div>
+
+    <div class="features-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+        </div>
+        <h3>AI Vision Reporting</h3>
+        <p>Drop a photo. AI auto-fills the category, severity, and description. Citizens never type a form again.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <h3>Live Heatmap</h3>
+        <p>Real-time map of every civic issue across Delhi, color-coded by severity and updated as reports stream in.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        </div>
+        <h3>Smart Chat Assistant</h3>
+        <p>Ask "compare Rohini vs Saket" or "show me Lajpat Nagar". Get rich dashboards with charts, trends, and AI verdicts.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>NGO + Govt Routing</h3>
+        <p>16 Delhi NGOs and 12 government agencies pre-mapped. AI drafts a formal complaint email and routes it instantly.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Verification Workflow</h3>
+        <p>4-step status timeline: Open → Verified → Escalated → Resolved. Every action earns reputation points.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <h3>Spam Detection</h3>
+        <p>14-rule classifier filters out fake reports automatically. Government time is spent on real issues, not noise.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 3. HOW IT WORKS ═══════════════ -->
+<section id="how" class="land-section">
+  <div class="land-section-eyebrow">How it works</div>
+  <h2>From a photo to a fix in 4 steps.</h2>
+  <p class="land-section-sub">Total effort for a citizen: 1 photo, 1 tap. AreaPulse handles the rest.</p>
+
+  <div class="how-steps">
+    <div class="how-step">
+      <div class="how-step-num">01</div>
+      <h3>Snap a photo</h3>
+      <p>Citizen takes a photo of the civic issue with their phone — pothole, garbage, broken streetlight, anything.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-step-num">02</div>
+      <h3>AI classifies</h3>
+      <p>Vision AI reads the photo, identifies the category, scores severity, and writes a description automatically.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-step-num">03</div>
+      <h3>Auto-routed</h3>
+      <p>Spam check passes. Report saves to Firestore. AI drafts a formal email to the right authority for the area.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-step-num">04</div>
+      <h3>Track resolution</h3>
+      <p>Citizens watch their report move through verification, escalation, and resolution — earning points along the way.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 4. ABOUT ═══════════════ -->
+<section id="about" class="land-section">
+  <div class="about-grid">
+    <div class="about-text">
+      <div class="land-section-eyebrow">About</div>
+      <h2>Civic complaints aren&apos;t broken. The system around them is.</h2>
+      <p>Delhi citizens file thousands of complaints every year — potholes, garbage, broken streetlights, water leaks. They&apos;re scattered across disconnected portals (MCD, DJB, BSES, e-District) with no follow-up, no spam filtering, and no accountability.</p>
+      <p>AreaPulse fixes the layer between citizens and authority. AI does the heavy lifting at every stage: classification, spam detection, severity scoring, dispatch drafting, and citywide pattern detection. Citizens stop feeling unheard. Authorities get clean, structured signals. NGOs find issues they can act on.</p>
+      <div class="about-tags">
+        <span class="about-tag">Smart Cities</span>
+        <span class="about-tag">Urban Governance</span>
+        <span class="about-tag">AI for India</span>
+        <span class="about-tag">Open Source</span>
+      </div>
+    </div>
+
+    <div class="about-team-card">
+      <div class="team-eyebrow">Team</div>
+      <h3>Nexons</h3>
+      <div class="team-member">
+        <div class="team-avatar">SS</div>
+        <div>
+          <div class="team-name">Shashwat Shukla</div>
+          <div class="team-role">Team Lead · Full-stack &amp; AI</div>
+        </div>
+      </div>
+      <div class="team-member">
+        <div class="team-avatar">GC</div>
+        <div>
+          <div class="team-name">Garv Chopra</div>
+          <div class="team-role">Engineering &amp; Frontend</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 5. CONTACT ═══════════════ -->
+<section id="contact" class="land-section">
+  <div class="land-section-eyebrow">Get in touch</div>
+  <h2 style="text-align:center;">Want to bring AreaPulse to your city?</h2>
+  <p class="land-section-sub" style="text-align:center; margin-left:auto; margin-right:auto;">We&apos;re open to partnerships with NGOs, municipal corporations, and CSR teams. Reach out below.</p>
+
+  <div class="contact-grid">
+    <a href="mailto:nexons.team@gmail.com" class="contact-card">
+      <div class="contact-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      </div>
+      <div class="contact-label">Email</div>
+      <div class="contact-value">nexons.team@gmail.com</div>
+    </a>
+
+    <a href="https://github.com/" target="_blank" rel="noopener" class="contact-card">
+      <div class="contact-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+      </div>
+      <div class="contact-label">GitHub</div>
+      <div class="contact-value">View source code</div>
+    </a>
+
+    <a href="/app" class="contact-card">
+      <div class="contact-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+      <div class="contact-label">Try it live</div>
+      <div class="contact-value">Open the app</div>
+    </a>
+  </div>
+</section>
+
+<!-- ═══════════════ FINAL CTA STRIP ═══════════════ -->
+<section class="land-final-cta">
+  <h2>Ready to make Delhi listen?</h2>
+  <p>Free for citizens. Forever.</p>
+  <a href="/app" class="btn-hero-primary">
+    Open AreaPulse
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14M13 5l7 7-7 7"/>
+    </svg>
+  </a>
+</section>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="land-footer">
+  <div style="margin-bottom:8px">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#about">About</a>
+    <a href="#contact">Contact</a>
+    <a href="/app">Open App</a>
+  </div>
+  <div>© 2026 Team Nexons · AreaPulse · Smart Cities / Urban Governance</div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Pull live stats from the actual issues DB and show them in the hero
+  (function() {
+    fetch('/issues')
+      .then(r => r.json())
+      .then(issues => {
+        const total    = issues.length;
+        const resolved = issues.filter(i => i.status === 'resolved').length;
+        const tEl = document.getElementById('hero-stat-total');
+        const rEl = document.getElementById('hero-stat-resolved');
+        if (tEl) tEl.textContent = total;
+        if (rEl) rEl.textContent = resolved;
+      })
+      .catch(() => {
+        // graceful fallback — leave the placeholder dashes
+      });
+  })();
+</script>
+{% endblock %}
