@@ -131,6 +131,12 @@ def logout():
 # ── PAGES ──────────────────────────────────────────────
 @app.route('/')
 def home():
+    """Marketing landing page (Firebase-style)."""
+    return render_template('landing.html', current_user=session.get('user'))
+
+@app.route('/app')
+def app_view():
+    """The actual product — map, sidebar, report form."""
     return render_template('index.html', current_user=session.get('user'))
 
 @app.route('/issues-page')
@@ -357,6 +363,20 @@ def ngo_nearby():
 def ngo_escalate(id):
     d = request.json or {}
     user = d.get('user') or session.get('user') or 'anonymous'
+
+    # Verification is a prerequisite for escalation. Allow REMOVING an existing
+    # escalation any time; only block ADDING a new one if not yet verified.
+    issues_data = get_issues()
+    target = next((i for i in issues_data if i.get('id') == id), None)
+    if target is not None:
+        already_escalated_by_user = 'escalate' in get_user_actions(user, [id]).get(id, [])
+        if not already_escalated_by_user and not target.get('is_verified'):
+            return jsonify({
+                'status': 'error',
+                'error': 'verification_required',
+                'message': 'Please verify this issue first before escalating it.',
+            }), 400
+
     result = toggle_issue_action(user, id, 'escalate')
     return jsonify({'status': 'ok', 'action': result})
 
@@ -542,7 +562,7 @@ def issue_detail(issue_id):
 
         step_done = {
             'Open':      True,                     # always — issue exists
-            'Verified':  is_verified or is_escalated or is_resolved,
+            'Verified':  is_verified or is_resolved,
             'Escalated': is_escalated or is_resolved,
             'Resolved':  is_resolved,
         }

@@ -26,6 +26,7 @@
     </a>
     <div class="nav-links">
       <a href="/" id="nav-home">Home</a>
+      <a href="/app" id="nav-app">Map</a>
       <a href="/issues-page" id="nav-issues">Issues</a>
       <a href="/my-issues" id="nav-my">My Reports</a>
       <a href="/community-page" id="nav-community">Community</a>
@@ -172,7 +173,7 @@
     // Active nav
     const path = window.location.pathname;
     const navMap = {
-      '/': 'nav-home', '/issues-page': 'nav-issues', '/my-issues': 'nav-my',
+      '/': 'nav-home', '/app': 'nav-app', '/issues-page': 'nav-issues', '/my-issues': 'nav-my',
       '/community-page': 'nav-community', '/ngo-page': 'nav-ngo', '/reputation': 'nav-rep'
     };
     const activeId = navMap[path];
