@@ -21,6 +21,8 @@ from database import (
 from classifier import auto_tag
 import ai_engine
 import time, base64, os
+import urllib.request as _ureq
+import json as _json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'problemmap-secret-2025')
@@ -654,6 +656,251 @@ def ai_draft_dispatch(issue_id):
 @app.route('/ai/health')
 def ai_health():
     return jsonify({'status': 'ok', 'engine': 'AreaPulse Civic AI v1.0'})
+
+
+# ══════════════════════════════════════════════════════════
+# WHATSAPP BOT  —  Twilio webhook
+# Env vars needed: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+# Webhook URL   : POST /whatsapp
+# Status URL    : POST /whatsapp/status
+#
+# Conversation flow:
+#   1. User sends photo  → AI analyzes → bot asks YES / NO
+#   2. User replies YES  → issue saved to Firebase → link sent
+#   3. User replies NO   → cancelled
+#   4. User shares location pin → updates GPS on pending issue
+# ══════════════════════════════════════════════════════════
+
+_WA_SESSIONS: dict = {}   # phone → session data
+_WA_TTL      = 600        # session timeout in seconds
+
+_SEV_EMOJI = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
+_TAG_EMOJI = {
+    'pothole': '🕳', 'garbage': '🗑', 'water': '💧',
+    'streetlight': '💡', 'sewage': '🚧', 'electricity': '⚡',
+    'traffic': '🚦', 'tree': '🌳', 'noise': '📢', 'other': '⚠️',
+}
+
+
+def _wa_twiml(*messages):
+    """Return minimal TwiML XML with one or more <Message> nodes."""
+    parts = ['<?xml version="1.0" encoding="UTF-8"?><Response>']
+    for m in messages:
+        safe = str(m).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        parts.append(f'<Message>{safe}</Message>')
+    parts.append('</Response>')
+    return ''.join(parts), 200, {'Content-Type': 'text/xml'}
+
+
+def _wa_prune():
+    now = time.time()
+    for k in [k for k, v in _WA_SESSIONS.items() if now - v.get('ts', 0) > _WA_TTL]:
+        del _WA_SESSIONS[k]
+
+
+def _wa_download_image(url):
+    sid   = os.environ.get('TWILIO_ACCOUNT_SID', '')
+    token = os.environ.get('TWILIO_AUTH_TOKEN', '')
+    req   = _ureq.Request(url)
+    if sid and token:
+        creds = base64.b64encode(f'{sid}:{token}'.encode()).decode()
+        req.add_header('Authorization', f'Basic {creds}')
+    with _ureq.urlopen(req, timeout=20) as r:
+        return r.read(), r.headers.get('Content-Type', 'image/jpeg')
+
+
+def _wa_reverse_geocode(lat, lng):
+    try:
+        url = (f'https://nominatim.openstreetmap.org/reverse'
+               f'?format=json&lat={lat}&lon={lng}&zoom=14')
+        req = _ureq.Request(url, headers={'User-Agent': 'AreaPulse/1.0'})
+        with _ureq.urlopen(req, timeout=6) as r:
+            addr = _json.loads(r.read()).get('address', {})
+        return (addr.get('suburb') or addr.get('neighbourhood') or
+                addr.get('city_district') or addr.get('town') or 'Delhi')
+    except Exception:
+        return 'Delhi'
+
+
+def _wa_extract_issue(result):
+    """Normalise both old single-dict and new issues-array AI response."""
+    if not isinstance(result, dict):
+        return None
+    if 'issues' in result:
+        arr = result['issues']
+        return arr[0] if arr else None
+    if result.get('tag') or result.get('issue_type') or result.get('category'):
+        return result
+    return None
+
+
+@app.route('/whatsapp', methods=['POST'])
+def whatsapp():
+    _wa_prune()
+
+    from_num  = request.form.get('From', '')
+    body      = (request.form.get('Body') or '').strip()
+    num_media = int(request.form.get('NumMedia', 0))
+    media_url = request.form.get('MediaUrl0', '')
+    lat_str   = request.form.get('Latitude', '')
+    lng_str   = request.form.get('Longitude', '')
+    phone     = from_num.replace('whatsapp:', '')
+    sess      = _WA_SESSIONS.get(from_num, {})
+
+    # ── 1. LOCATION PIN ───────────────────────────────
+    if lat_str and lng_str:
+        try:
+            lat, lng = float(lat_str), float(lng_str)
+            if sess.get('state') == 'AWAITING_CONFIRM':
+                sess['pending'].update({'lat': lat, 'lng': lng,
+                                        'area': _wa_reverse_geocode(lat, lng)})
+                sess['ts'] = time.time()
+                _WA_SESSIONS[from_num] = sess
+                return _wa_twiml(
+                    "📍 Location saved!\n\nReply *YES* to submit or *NO* to cancel."
+                )
+        except Exception:
+            pass
+
+    # ── 2. PHOTO ──────────────────────────────────────
+    if num_media > 0 and media_url:
+        try:
+            img_bytes, mime = _wa_download_image(media_url)
+            img_b64         = base64.b64encode(img_bytes).decode()
+            ai_result       = ai_engine.analyze_image(img_b64, mime_type=mime)
+            issue           = _wa_extract_issue(ai_result)
+
+            if not issue:
+                return _wa_twiml(
+                    "🔍 I couldn't identify a clear civic issue in this photo.\n\n"
+                    "Please send a clearer image (pothole, garbage, broken light, etc.)."
+                )
+
+            tag       = (issue.get('tag') or issue.get('issue_type') or 'other').lower()
+            severity  = (issue.get('severity') or 'medium').lower()
+            desc      = (issue.get('improved_description') or
+                         issue.get('description') or
+                         issue.get('summary') or
+                         f'{tag.title()} issue detected').strip()
+            authority = (issue.get('suggested_authority') or
+                         issue.get('recommended_authority') or 'MCD')
+            confidence = issue.get('confidence') or issue.get('confidence_score') or 0
+
+            _WA_SESSIONS[from_num] = {
+                'state':   'AWAITING_CONFIRM',
+                'ts':      time.time(),
+                'img':     f'data:{mime};base64,{img_b64}',
+                'pending': {
+                    'user':        phone,
+                    'area':        'Delhi',
+                    'description': desc,
+                    'tag':         tag,
+                    'severity':    severity,
+                    'lat':         None,
+                    'lng':         None,
+                },
+            }
+
+            conf_txt = f" ({confidence}% confidence)" if confidence else ""
+            te = _TAG_EMOJI.get(tag, '⚠️')
+            se = _SEV_EMOJI.get(severity, '🟡')
+
+            return _wa_twiml(
+                f"{te} *{tag.replace('_',' ').title()} Detected*{conf_txt}\n\n"
+                f"{se} Severity: *{severity.upper()}*\n"
+                f"🏛 Authority: {authority}\n\n"
+                f"_{desc[:140]}{'…' if len(desc) > 140 else ''}_\n\n"
+                f"Reply *YES* to submit ✅\n"
+                f"Reply *NO* to cancel ❌\n"
+                f"Or share your 📍 *location pin* for precise GPS"
+            )
+
+        except Exception as e:
+            print(f"[WhatsApp] Image error: {e}")
+            import traceback; traceback.print_exc()
+            return _wa_twiml("❌ Trouble analyzing that image. Please try again.")
+
+    # ── 3. TEXT COMMANDS ──────────────────────────────
+    bl = body.lower()
+
+    # YES → submit
+    if bl in ('yes', 'y', 'yeah', 'ha', 'haan', 'ok', 'okay', 'submit', 'confirm', '✅'):
+        if sess.get('state') == 'AWAITING_CONFIRM':
+            p = sess['pending']
+            try:
+                lat = p.get('lat') or AREA_COORDS.get(p.get('area', ''), [28.6139, 77.2090])[0]
+                lng = p.get('lng') or AREA_COORDS.get(p.get('area', ''), [28.6139, 77.2090])[1]
+
+                insert_issue(
+                    p.get('area', 'Delhi'),
+                    p['description'],
+                    p['tag'],
+                    p['user'],
+                    lat, lng,
+                    sess.get('img'),
+                    p.get('severity', 'medium'),
+                    '',
+                    phone,
+                )
+                del _WA_SESSIONS[from_num]
+
+                base_url = os.environ.get('AREAPULSE_URL',
+                                          'https://areapulse-5ag9.onrender.com')
+                te = _TAG_EMOJI.get(p['tag'], '⚠️')
+                se = _SEV_EMOJI.get(p.get('severity'), '🟡')
+                return _wa_twiml(
+                    f"✅ *Issue Reported!*\n\n"
+                    f"{te} {p['tag'].title()}  {se} {p.get('severity','medium').title()}\n"
+                    f"📍 {p['area']}\n\n"
+                    f"🗺 Track all issues:\n{base_url}/issues-page\n\n"
+                    f"Thank you for making Delhi better! 🙏"
+                )
+            except Exception as e:
+                print(f"[WhatsApp] Insert error: {e}")
+                return _wa_twiml("❌ Error saving report. Please try again.")
+        return _wa_twiml("Please send a *photo* first, then reply YES to confirm.")
+
+    # NO → cancel
+    if bl in ('no', 'n', 'cancel', 'nahi', 'nope', '❌'):
+        _WA_SESSIONS.pop(from_num, None)
+        return _wa_twiml("❌ Cancelled. Send a new photo anytime to report an issue.")
+
+    # Greeting / help
+    if any(w in bl for w in ('hi', 'hello', 'hey', 'start', 'help', 'helo',
+                              'namaste', 'namaskar', 'menu')):
+        base_url = os.environ.get('AREAPULSE_URL',
+                                  'https://areapulse-5ag9.onrender.com')
+        return _wa_twiml(
+            f"👋 *Welcome to AreaPulse!*\n\n"
+            f"Report civic issues in Delhi instantly.\n\n"
+            f"📸 Just *send a photo* of any problem:\n"
+            f"  🕳 Pothole  🗑 Garbage  💧 Water leak\n"
+            f"  💡 Broken light  🚧 Sewage  ⚡ Electrical\n\n"
+            f"Our AI identifies it and routes it to the right authority automatically. "
+            f"No forms. No apps. No login.\n\n"
+            f"🗺 View all issues: {base_url}"
+        )
+
+    # Pending issue reminder
+    if sess.get('state') == 'AWAITING_CONFIRM':
+        p = sess['pending']
+        return _wa_twiml(
+            f"Waiting for your confirmation.\n\n"
+            f"Detected: *{p['tag'].title()}* ({p.get('severity','medium')} severity)\n\n"
+            f"Reply *YES* to submit or *NO* to cancel."
+        )
+
+    # Fallback
+    return _wa_twiml(
+        "📸 Send me a *photo* of a civic issue (pothole, garbage, broken light, etc.) "
+        "and I'll report it automatically!\n\nType *hi* for help."
+    )
+
+
+@app.route('/whatsapp/status', methods=['POST'])
+def whatsapp_status():
+    """Twilio delivery status callback — just acknowledge."""
+    return '', 204
 
 
 if __name__ == '__main__':
