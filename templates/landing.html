@@ -433,6 +433,27 @@
     .about-grid { grid-template-columns: 1fr; gap: 40px; }
     .contact-grid { grid-template-columns: 1fr; }
   }
+  .btn-ar-scanner {
+  background: linear-gradient(135deg, #B85042, #C84B31);
+  color: #fff;
+  padding: 13px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  border: none;
+  }
+  .btn-ar-scanner:hover {
+  background: linear-gradient(135deg, #A0382A, #B03D27);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(200,75,49,0.35);
+  text-decoration: none;
+  }
   @media (max-width: 600px) {
     .land-section { padding: 60px 18px; }
     .land-hero { padding: 80px 18px 50px; }
@@ -474,6 +495,11 @@
        class="btn-whatsapp">
       <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg"/>
       Report via WhatsApp
+    </a>
+    <a href="https://areapulse-camera.onrender.com"
+       target="_blank"
+       class="btn-ar-scanner">
+      📷 AR Scanner
     </a>
     <a href="#features" class="btn-hero-secondary">See how it works</a>
   </div>
