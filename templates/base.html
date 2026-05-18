@@ -32,7 +32,6 @@
       <a href="/community-page" id="nav-community">Community</a>
       <a href="/ngo-page" id="nav-ngo">NGOs</a>
       <a href="/reputation" id="nav-rep">Reputation</a>
-      <a href="https://areapulse-camera.onrender.com" target="_blank" id="nav-cam">📷 AR Scanner</a>
     </div>
     <div class="nav-right">
       <!-- Theme Toggle Pill -->
@@ -175,7 +174,7 @@
     const path = window.location.pathname;
     const navMap = {
       '/': 'nav-home', '/app': 'nav-app', '/issues-page': 'nav-issues', '/my-issues': 'nav-my',
-      '/community-page': 'nav-community', '/ngo-page': 'nav-ngo', '/reputation': 'nav-rep','https://areapulse-camera.onrender.com': 'nav-cam'
+      '/community-page': 'nav-community', '/ngo-page': 'nav-ngo', '/reputation': 'nav-rep'
     };
     const activeId = navMap[path];
     if (activeId) document.getElementById(activeId)?.classList.add('active');
