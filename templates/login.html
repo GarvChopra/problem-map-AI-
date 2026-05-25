@@ -1,158 +1,399 @@
-{% extends "base.html" %}
-{% block title %}Sign In — Problem Map{% endblock %}
-{% block extra_head %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AreaPulse · Sign In</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  .login-page {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: var(--bg); padding: 20px;
-  }
-  .login-box {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 36px; width: 100%; max-width: 400px;
-  }
-  .login-logo {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 28px;
-  }
-  .login-logo-icon {
-    width: 36px; height: 36px; background: var(--accent); border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    color: white; font-weight: 700; font-size: 14px;
-  }
-  .login-logo-text { font-family: 'DM Serif Display', serif; font-size: 20px; }
-  .login-title { font-family: 'DM Serif Display', serif; font-size: 24px; margin-bottom: 6px; }
-  .login-sub { color: var(--text2); font-size: 13px; margin-bottom: 28px; }
-  .divider {
-    display: flex; align-items: center; gap: 12px;
-    margin: 20px 0; color: var(--text3); font-size: 12px;
-  }
-  .divider::before, .divider::after {
-    content: ''; flex: 1; height: 1px; background: var(--border);
-  }
-  .btn-google {
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    width: 100%; padding: 10px; border: 1px solid var(--border);
-    border-radius: 8px; background: var(--surface); cursor: pointer;
-    font-family: inherit; font-size: 14px; font-weight: 500; color: var(--text);
-    transition: background 0.15s, border-color 0.15s; text-decoration: none;
-  }
-  .btn-google:hover { background: var(--surface2); }
-  .google-icon { width: 18px; height: 18px; }
-  .tabs { display: flex; gap: 0; margin-bottom: 24px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .tab-btn {
-    flex: 1; padding: 9px; border: none; background: transparent; cursor: pointer;
-    font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text2);
-    transition: background 0.15s, color 0.15s;
-  }
-  .tab-btn.active { background: var(--accent); color: white; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-  .error-msg {
-    background: rgba(200,75,49,0.1); color: var(--accent); border: 1px solid rgba(200,75,49,0.25);
-    border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
-  }
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:'Inter', system-ui, -apple-system, sans-serif;
+  background:#f5f5f5;
+  color:#1a1a1a;
+  min-height:100vh;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+
+.card {
+  background:#fff;
+  width:100%; max-width:420px;
+  padding:48px 36px 40px;
+  border-radius:24px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.08);
+}
+
+.brand {
+  text-align:center;
+  margin-bottom:8px;
+}
+.brand h1 {
+  font-size:32px;
+  font-weight:700;
+  color:#1a1a1a;
+  letter-spacing:-0.5px;
+}
+.brand p {
+  font-size:15px;
+  color:#666;
+  margin-top:4px;
+  font-weight:400;
+}
+
+/* Toggle tabs */
+.toggle-row {
+  display:flex;
+  gap:10px;
+  margin:28px 0 24px;
+}
+.toggle-btn {
+  flex:1;
+  padding:14px 0;
+  border:none;
+  border-radius:14px;
+  font-family:inherit;
+  font-size:15px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.2s;
+  background:#f0f0f0;
+  color:#444;
+}
+.toggle-btn:hover {
+  background:#e8e8e8;
+}
+.toggle-btn.active {
+  background:#1a8cff;
+  color:#fff;
+}
+
+/* Form sections */
+.form-section {
+  display:none;
+}
+.form-section.active {
+  display:block;
+}
+
+/* Google button */
+.google-btn {
+  width:100%;
+  padding:14px;
+  background:#fff;
+  border:1px solid #e0e0e0;
+  border-radius:14px;
+  font-family:inherit;
+  font-size:15px;
+  font-weight:500;
+  color:#1a1a1a;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  transition:all 0.2s;
+  margin-bottom:20px;
+}
+.google-btn:hover {
+  background:#fafafa;
+  border-color:#d0d0d0;
+}
+.google-btn svg {
+  width:20px; height:20px;
+}
+
+/* OR divider */
+.or-divider {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin:0 0 20px;
+  color:#999;
+  font-size:13px;
+  font-weight:500;
+}
+.or-divider::before,
+.or-divider::after {
+  content:'';
+  flex:1;
+  height:1px;
+  background:#e8e8e8;
+}
+
+/* Inputs */
+.input-group {
+  margin-bottom:14px;
+}
+.input-group input {
+  width:100%;
+  padding:15px 18px;
+  background:#fff;
+  border:1px solid #e0e0e0;
+  border-radius:14px;
+  font-family:inherit;
+  font-size:15px;
+  color:#1a1a1a;
+  outline:none;
+  transition:border-color 0.2s, box-shadow 0.2s;
+}
+.input-group input::placeholder {
+  color:#aaa;
+  font-weight:400;
+}
+.input-group input:focus {
+  border-color:#1a8cff;
+  box-shadow:0 0 0 3px rgba(26,140,255,0.1);
+}
+
+/* Gov restricted banner */
+.gov-banner {
+  padding:12px 16px;
+  background:#f0f7ff;
+  border-radius:12px;
+  font-size:14px;
+  color:#1a8cff;
+  font-weight:500;
+  margin-bottom:16px;
+}
+
+/* Submit button */
+.submit-btn {
+  width:100%;
+  padding:16px;
+  background:#1a8cff;
+  border:none;
+  border-radius:14px;
+  font-family:inherit;
+  font-size:16px;
+  font-weight:600;
+  color:#fff;
+  cursor:pointer;
+  transition:all 0.2s;
+  margin-top:6px;
+}
+.submit-btn:hover {
+  background:#1470d9;
+  transform:translateY(-1px);
+  box-shadow:0 4px 16px rgba(26,140,255,0.3);
+}
+.submit-btn:active {
+  transform:translateY(0);
+}
+
+/* Footer text */
+.footer-text {
+  text-align:center;
+  margin-top:20px;
+  font-size:13px;
+  color:#888;
+}
+
+/* Error message */
+.error-msg {
+  background:#fff0f0;
+  border:1px solid #ffcccc;
+  color:#d32f2f;
+  padding:12px 16px;
+  border-radius:12px;
+  font-size:13px;
+  margin-bottom:16px;
+  display:none;
+}
+.error-msg.show {
+  display:block;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position:fixed; inset:0; z-index:999;
+  background:rgba(255,255,255,0.9);
+  display:none; align-items:center; justify-content:center;
+  flex-direction:column; gap:16px;
+}
+.loading-overlay.show {
+  display:flex;
+}
+.spinner {
+  width:40px; height:40px;
+  border:3px solid rgba(26,140,255,0.2);
+  border-top-color:#1a8cff;
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text {
+  font-family:'Inter', sans-serif;
+  font-size:14px; color:#1a8cff; font-weight:500;
+}
+
+/* Demo hint */
+.demo-hint {
+  margin-top:18px;
+  padding:14px 16px;
+  background:#f8f9fa;
+  border:1px solid #e8e8e8;
+  border-radius:12px;
+  font-size:12px;
+  color:#666;
+  line-height:1.7;
+}
+.demo-hint strong {
+  color:#1a8cff;
+  font-weight:600;
+  display:block;
+  margin-bottom:6px;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.demo-hint code {
+  background:#1a1a1a;
+  color:#fff;
+  padding:2px 8px;
+  border-radius:4px;
+  font-size:12px;
+  font-family:'SF Mono', monospace;
+}
+
+/* Responsive */
+@media (max-width:480px) {
+  .card { padding:36px 24px 32px; border-radius:20px; }
+  .brand h1 { font-size:28px; }
+  .toggle-btn { font-size:14px; padding:12px 0; }
+}
 </style>
-{% endblock %}
-{% block content %}
-<div class="login-page" style="padding-top: 0;">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-icon">PM</div>
-      <div class="login-logo-text">Problem Map</div>
-    </div>
+<base target="_blank">
+</head>
+<body>
 
-    <div class="login-title">Welcome back</div>
-    <div class="login-sub">Sign in to report and track civic issues in Delhi</div>
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Authenticating...</div>
+</div>
 
-    {% if error %}
-    <div class="error-msg">{{ error }}</div>
-    {% endif %}
+<div class="card">
+  <div class="brand">
+    <h1>AreaPulse</h1>
+    <p>Community Reporting Platform</p>
+  </div>
 
-    <!-- Google Sign In (UI only — requires OAuth setup on backend) -->
-    <a href="/auth/google" class="btn-google" id="google-btn">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
+  <!-- Toggle -->
+  <div class="toggle-row">
+    <button class="toggle-btn active" id="tab-citizen" onclick="switchTab('citizen')">Citizen</button>
+    <button class="toggle-btn" id="tab-gov" onclick="switchTab('gov')">Gov / NGO</button>
+  </div>
+
+  <div class="error-msg" id="error-msg"></div>
+
+  <!-- Citizen Form -->
+  <div class="form-section active" id="form-citizen">
+    <button class="google-btn" type="button" onclick="googleLogin()">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
       Continue with Google
-    </a>
+    </button>
 
-    <div class="divider">or continue with</div>
+    <div class="or-divider"><span>OR</span></div>
 
-    <!-- Tabs: Quick Name / Email+Password -->
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('quick')">Quick Sign In</button>
-      <button class="tab-btn" onclick="switchTab('email')">Email & Password</button>
-    </div>
+    <form method="POST" action="/login" id="citizen-form">
+      <div class="input-group">
+        <input type="text" name="name" id="citizen-name" placeholder="Your name" required autocomplete="username"/>
+      </div>
+      <!-- Citizen leaves pin blank -->
+      <input type="hidden" name="pin" value=""/>
+      <button type="submit" class="submit-btn">Log in</button>
+    </form>
+  </div>
 
-    <!-- Quick Name Login (existing) -->
-    <div class="tab-panel active" id="tab-quick">
-      <form method="POST" action="/login">
-        <div class="form-group">
-          <label>Your Name</label>
-          <input type="text" name="name" placeholder="e.g. Priya Sharma" required minlength="2" maxlength="50" autocomplete="name"/>
-        </div>
-        <button type="submit" class="btn btn-primary w-full" style="justify-content:center; padding:10px;">
-          Sign In
-        </button>
-        <p style="font-size:12px; color:var(--text3); margin-top:10px; text-align:center;">
-          No password needed — just your name to get started.
-        </p>
-      </form>
-    </div>
+  <!-- Gov Form -->
+  <div class="form-section" id="form-gov">
+    <div class="gov-banner">Restricted Government / NGO Access</div>
 
-    <!-- Email+Password (UI only — needs backend) -->
-    <div class="tab-panel" id="tab-email">
-      <form onsubmit="handleEmailLogin(event)">
-        <div class="form-group">
-          <label>Email address</label>
-          <input type="email" id="email-field" placeholder="you@example.com" autocomplete="email"/>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="password-field" placeholder="••••••••" autocomplete="current-password"/>
-        </div>
-        <button type="submit" class="btn btn-primary w-full" style="justify-content:center; padding:10px;">
-          Sign In
-        </button>
-        <p style="font-size:12px; color:var(--text3); margin-top:10px; text-align:center;">
-          <a href="#" style="color:var(--accent);">Forgot password?</a> &nbsp;·&nbsp;
-          <a href="#" style="color:var(--accent);" onclick="handleRegister(event)">Create account</a>
-        </p>
-      </form>
-    </div>
+    <form method="POST" action="/login" id="gov-form">
+      <div class="input-group">
+        <input type="text" name="name" id="gov-username" placeholder="Government Username" required autocomplete="username"/>
+      </div>
+      <div class="input-group">
+        <input type="password" name="pin" id="gov-pin" placeholder="Security PIN" required maxlength="6" autocomplete="off"/>
+      </div>
+      <button type="submit" class="submit-btn">Enter Portal</button>
+    </form>
+  </div>
 
+  <p class="footer-text">Secure access to AreaPulse</p>
+
+  <div class="demo-hint">
+    <strong>▼ Demo Accounts</strong>
+    Gov officers: <code>gov_rmc</code>, <code>gov_water</code>, <code>gov_electricity</code>, <code>gov_traffic</code>, <code>gov_rmkc</code><br>
+    PIN: <code>0000</code> for all
   </div>
 </div>
-{% endblock %}
-{% block scripts %}
+
 <script>
-  function switchTab(tab) {
-    document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0 && tab==='quick') || (i===1 && tab==='email')));
-    document.getElementById('tab-quick').classList.toggle('active', tab==='quick');
-    document.getElementById('tab-email').classList.toggle('active', tab==='email');
+// Pre-fill gov username if redirected back with error
+window.addEventListener('DOMContentLoaded', () => {
+  const url = new URL(window.location.href);
+  const error = url.searchParams.get('error');
+  const govAttempt = url.searchParams.get('gov_attempt');
+
+  if (error) {
+    document.getElementById('error-msg').textContent = decodeURIComponent(error);
+    document.getElementById('error-msg').classList.add('show');
   }
 
-  function handleEmailLogin(e) {
+  // If there was a gov login attempt, switch to gov tab and pre-fill
+  if (govAttempt) {
+    switchTab('gov');
+    document.getElementById('gov-username').value = govAttempt;
+    document.getElementById('gov-pin').focus();
+  }
+});
+
+function switchTab(tab) {
+  document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('form-' + tab).classList.add('active');
+  document.getElementById('error-msg').classList.remove('show');
+}
+
+// Show loading spinner on form submit
+document.getElementById('citizen-form').addEventListener('submit', function() {
+  document.getElementById('loading-overlay').classList.add('show');
+});
+
+document.getElementById('gov-form').addEventListener('submit', function(e) {
+  const username = document.getElementById('gov-username').value.trim().toLowerCase();
+  const pin = document.getElementById('gov-pin').value.trim();
+
+  // Quick client-side validation
+  const validGovAccounts = ['gov_rmc', 'gov_water', 'gov_electricity', 'gov_traffic', 'gov_rmkc'];
+  if (!validGovAccounts.includes(username)) {
     e.preventDefault();
-    const email = document.getElementById('email-field').value.trim();
-    const pass = document.getElementById('password-field').value;
-    if (!email || !pass) { showToast('Please fill in all fields'); return; }
-    // Extract name from email as username for now
-    const name = email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
-    // Submit as quick login with derived name
-    const form = document.createElement('form');
-    form.method = 'POST'; form.action = '/login';
-    const inp = document.createElement('input');
-    inp.name = 'name'; inp.value = name;
-    form.appendChild(inp); document.body.appendChild(form); form.submit();
+    document.getElementById('error-msg').textContent = 'Unknown government account. Use demo accounts listed below.';
+    document.getElementById('error-msg').classList.add('show');
+    return;
   }
-
-  function handleRegister(e) {
+  if (!pin) {
     e.preventDefault();
-    showToast('Registration coming soon — use Quick Sign In for now');
+    document.getElementById('error-msg').textContent = 'PIN is required for government accounts.';
+    document.getElementById('error-msg').classList.add('show');
+    return;
   }
 
-  // Google button is now wired to real OAuth — no interception needed
+  document.getElementById('loading-overlay').classList.add('show');
+});
+
+function googleLogin() {
+  document.getElementById('loading-overlay').classList.add('show');
+  // In production, redirect to Google OAuth
+  // For demo, just simulate
+  setTimeout(() => {
+    window.location.href = '/login?google=1';
+  }, 500);
+}
 </script>
-{% endblock %}
+
+</body>
+</html>
